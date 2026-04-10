@@ -1,4 +1,6 @@
-export type Store = 'kindle' | 'dmm' | 'other'
+import type { Store } from '../schemas/book-schema.js'
+
+export type { Store }
 
 export interface Book {
   id: string

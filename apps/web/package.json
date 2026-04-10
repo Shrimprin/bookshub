@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "pages:build": "pnpm exec @cloudflare/next-on-pages",
-    "preview": "pnpm run pages:build && wrangler pages dev",
-    "deploy": "pnpm run pages:build && wrangler pages deploy"
+    "pages:build": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare dev",
+    "deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@bookhub/shared": "workspace:*",
@@ -20,8 +20,8 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.12",
     "@eslint/eslintrc": "^3.3.5",
+    "@opennextjs/cloudflare": "^1.18.1",
     "@tailwindcss/postcss": "^4.1.4",
     "@types/node": "^22.15.3",
     "@types/react": "^19.1.2",

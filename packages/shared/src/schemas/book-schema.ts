@@ -15,5 +15,6 @@ export const scrapePayloadSchema = z.object({
   books: z.array(scrapeBookSchema).min(1),
 })
 
+export type Store = z.infer<typeof storeSchema>
 export type ScrapeBook = z.infer<typeof scrapeBookSchema>
 export type ScrapePayload = z.infer<typeof scrapePayloadSchema>
