@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Layer            | Technology                                                      |
 | ---------------- | --------------------------------------------------------------- |
 | Frontend         | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui |
-| Hosting          | Cloudflare Pages (`@cloudflare/next-on-pages`)                  |
+| Hosting          | Cloudflare Pages (`@opennextjs/cloudflare`)                     |
 | BaaS             | Supabase (Auth + PostgreSQL with RLS)                           |
 | Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript                            |
 | Linter/Formatter | ESLint (flat config) + Prettier                                 |
@@ -58,7 +58,7 @@ MVP対象外（フェーズ2以降）:
 - `docs/tech_stach.md` — 技術スタック定義書
 - `docs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
 - `docs/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・PR チェックリスト
-- Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@cloudflare/next-on-pages`の制約に注意。
+- Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@opennextjs/cloudflare`の制約に注意。
 - 成人向けコンテンツと一般向けコンテンツは本棚を分離・隠蔽可能にする設計が必要。
 
 ## Common Commands

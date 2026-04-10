@@ -24,7 +24,7 @@
 
 APIルートの処理、ユーザー認証、データ保存、およびホスティング環境。
 
-- **ホスティング環境**: Cloudflare Pages (`@cloudflare/next-on-pages`)
+- **ホスティング環境**: Cloudflare Pages (`@opennextjs/cloudflare`)
   - 選定理由: 無料枠でも商用利用（アフィリエイト等）が明記して許可されている。Next.jsのSSRやAPIルートをエッジサーバーで高速に実行可能。
 - **BaaS (認証・データベース)**: Supabase
   - **認証 (Auth)**: メールアドレス/パスワード認証、Google OAuth（離脱率低下のため推奨）。
