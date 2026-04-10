@@ -31,5 +31,6 @@ Thumbs.db
 
 # pnpm
 .pnpm-debug.log
-apps/web/tsconfig.tsbuildinfo
-.next
+
+# TypeScript build info
+**/*.tsbuildinfo

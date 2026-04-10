@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "pages:build": "npx @cloudflare/next-on-pages",
-    "preview": "npm run pages:build && wrangler pages dev",
-    "deploy": "npm run pages:build && wrangler pages deploy"
+    "pages:build": "pnpm exec @cloudflare/next-on-pages",
+    "preview": "pnpm run pages:build && wrangler pages dev",
+    "deploy": "pnpm run pages:build && wrangler pages deploy"
   },
   "dependencies": {
     "@bookhub/shared": "workspace:*",
@@ -28,7 +28,6 @@
     "eslint": "^10.2.0",
     "eslint-config-next": "^16.2.3",
     "tailwindcss": "^4.1.4",
-    "typescript": "^5.8.3",
-    "vercel": "^41.7.2"
+    "typescript": "^5.8.3"
   }
 }

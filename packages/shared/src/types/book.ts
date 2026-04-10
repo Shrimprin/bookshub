@@ -7,6 +7,12 @@ export interface Book {
   thumbnailUrl?: string
 }
 
+export interface NewBook {
+  title: string
+  author: string
+  thumbnailUrl?: string
+}
+
 export interface BookVolume {
   id: string
   bookId: string
