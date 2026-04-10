@@ -24,13 +24,14 @@ cp .env.example apps/web/.env.local
 
 ## コマンドリファレンス（ルート）
 
-| コマンド            | 説明                                            |
-| ------------------- | ----------------------------------------------- |
-| `pnpm dev`          | Web アプリの開発サーバーを起動 (localhost:3000) |
-| `pnpm build`        | 全パッケージをビルド                            |
-| `pnpm lint`         | 全パッケージで ESLint を実行                    |
-| `pnpm format`       | Prettier でコードを整形                         |
-| `pnpm format:check` | フォーマットのチェックのみ（整形しない）        |
+| コマンド            | 説明                                                    |
+| ------------------- | ------------------------------------------------------- |
+| `pnpm dev`          | Web アプリの開発サーバーを起動 (localhost:3000)         |
+| `pnpm build`        | 全パッケージをビルド                                    |
+| `pnpm lint`         | 全パッケージで ESLint を実行                            |
+| `pnpm fix`          | lint 自動修正 + Prettier フォーマット（コミット前推奨） |
+| `pnpm format`       | Prettier でコードを整形                                 |
+| `pnpm format:check` | フォーマットのチェックのみ（整形しない）                |
 
 ## パッケージ別コマンド
 
@@ -76,8 +77,9 @@ cp .env.example apps/web/.env.local
 ## コードスタイル
 
 - TypeScript strict モード（`tsconfig.base.json` 参照）
-- ESLint + Prettier（`pnpm format` で自動整形）
-- コミット前に `pnpm lint && pnpm format:check` が通ることを確認
+- ESLint flat config + Prettier（`pnpm fix` で一括自動修正）
+- husky の pre-commit フックにより、コミット時に `pnpm lint` と `pnpm format:check` が自動実行される
+- コミット前に `pnpm fix` を実行して問題を解消しておくことを推奨
 
 ## PR チェックリスト
 

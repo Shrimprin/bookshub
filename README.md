@@ -82,12 +82,16 @@ pnpm --filter web pages:build
 ### Lint / Format
 
 ```bash
-pnpm lint
-pnpm format
+pnpm lint          # lint チェック
+pnpm fix           # lint 自動修正 + prettier フォーマット（コミット前推奨）
+pnpm format:check  # フォーマットチェックのみ
 ```
+
+> pre-commit フック（husky）により、コミット時に lint と format チェックが自動実行されます。
 
 ## ドキュメント
 
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — 開発環境セットアップ・コマンドリファレンス
 - [`docs/requirement_definition.md`](docs/requirement_definition.md) — 要求定義書
 - [`docs/mvp.md`](docs/mvp.md) — MVP仕様
 - [`docs/tech_stach.md`](docs/tech_stach.md) — 技術スタック定義書
