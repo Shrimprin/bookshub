@@ -7,6 +7,7 @@ export interface Book {
   title: string
   author: string
   thumbnailUrl?: string
+  isAdult: boolean
 }
 
 export interface NewBook {
