@@ -3,12 +3,16 @@
     "serena": {
       "command": "uvx",
       "args": [
-        "-p", "3.13",
-        "--from", "git+https://github.com/oraios/serena",
+        "-p",
+        "3.13",
+        "--from",
+        "git+https://github.com/oraios/serena",
         "serena",
         "start-mcp-server",
-        "--context", "claude-code",
-        "--project", "/home/kuroneko/study/shincode-course-platform"
+        "--context",
+        "claude-code",
+        "--project",
+        "/home/kuroneko/study/shincode-course-platform"
       ]
     },
     "supabase": {

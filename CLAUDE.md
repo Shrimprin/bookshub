@@ -6,16 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **BookHub** — 漫画ヘビーユーザー向け本棚管理・二度買い防止サービス。複数の電子書籍ストア（KindleやDMM等）に散らばった蔵書をChrome拡張機能経由で自動取得し、Webアプリで一元管理する。
 
-## Planned Tech Stack
+## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui |
-| Hosting | Cloudflare Pages (`@cloudflare/next-on-pages`) |
-| BaaS | Supabase (Auth + PostgreSQL with RLS) |
-| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript |
-| Linter/Formatter | ESLint + Prettier (via `eslint-config-prettier`) |
-| PackageManager | pnpm |
+| Layer            | Technology                                                      |
+| ---------------- | --------------------------------------------------------------- |
+| Frontend         | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui |
+| Hosting          | Cloudflare Pages (`@opennextjs/cloudflare`)                     |
+| BaaS             | Supabase (Auth + PostgreSQL with RLS)                           |
+| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript                            |
+| Linter/Formatter | ESLint (flat config) + Prettier                                 |
+| Git Hooks        | husky (pre-commit: lint + format check)                         |
+| PackageManager   | pnpm workspaces (monorepo)                                      |
 
 ## Architecture Overview
 
@@ -25,6 +26,7 @@ The system has two main components that share TypeScript type definitions:
 2. **Chrome Extension (Vite/CRXJS)** — KindleやDMMのページからDOMをスクレイピングし、Next.jsのAPIエンドポイントへPOSTする。
 
 ### Data Flow
+
 ```
 User → Supabase Auth → Chrome Extension scrapes store pages
 → POST to Next.js API → Supabase PostgreSQL
@@ -32,11 +34,13 @@ User → Supabase Auth → Chrome Extension scrapes store pages
 ```
 
 ### Supabase RLS
+
 各ユーザーは自分のデータのみアクセス可能。Row Level Security でバックエンド側で制御する。
 
 ## MVP Scope
 
 実装対象:
+
 - 書影ギャラリー表示（購入ストアのタグ付き）
 - タイトル/作者名での絞り込み検索
 - 書籍名検索からの手動登録（楽天ブックスAPI or Google Books API）
@@ -44,6 +48,7 @@ User → Supabase Auth → Chrome Extension scrapes store pages
 - 次巻のステータス表示
 
 MVP対象外（フェーズ2以降）:
+
 - ネイティブアプリ、最安値シミュレーター、プッシュ通知
 
 ## Development Notes
@@ -52,5 +57,18 @@ MVP対象外（フェーズ2以降）:
 - `docs/mvp.md` — MVP仕様（実装対象・対象外機能）
 - `docs/tech_stach.md` — 技術スタック定義書
 - `docs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
-- Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@cloudflare/next-on-pages`の制約に注意。
+- `docs/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・PR チェックリスト
+- Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@opennextjs/cloudflare`の制約に注意。
 - 成人向けコンテンツと一般向けコンテンツは本棚を分離・隠蔽可能にする設計が必要。
+
+## Common Commands
+
+```bash
+pnpm dev          # Web アプリ開発サーバー起動
+pnpm build        # 全パッケージビルド
+pnpm lint         # 全パッケージ lint
+pnpm fix          # lint 自動修正 + prettier フォーマット（コミット前推奨）
+pnpm format:check # フォーマットチェックのみ
+```
+
+pre-commit フック（husky）により、コミット時に `pnpm lint` と `pnpm format:check` が自動実行される。
