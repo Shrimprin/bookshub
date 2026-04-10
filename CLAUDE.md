@@ -48,6 +48,9 @@ MVP対象外（フェーズ2以降）:
 
 ## Development Notes
 
-- `docs/` — 要求定義書・MVP仕様・技術スタック定義書
+- `docs/requirement_definition.md` — 要求定義書（ビジネス要件・機能要件・UX要件）
+- `docs/mvp.md` — MVP仕様（実装対象・対象外機能）
+- `docs/tech_stach.md` — 技術スタック定義書
+- `docs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
 - Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@cloudflare/next-on-pages`の制約に注意。
 - 成人向けコンテンツと一般向けコンテンツは本棚を分離・隠蔽可能にする設計が必要。
