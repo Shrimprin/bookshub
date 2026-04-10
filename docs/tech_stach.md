@@ -7,45 +7,51 @@
 # BookHub MVP 技術スタック定義書
 
 ## 1. プロジェクト概要
+
 複数の電子書籍ストア（MVPではKindle・DMMに限定）の蔵書データをChrome拡張機能経由で自動取得し、Webアプリケーション上で一元管理する「漫画ヘビーユーザー向け本棚管理・二度買い防止サービス」。
 
 ## 2. フロントエンド（Webアプリケーション）
+
 ユーザーが本棚を閲覧し、設定を行うメインのインターフェース。
 
-* **フレームワーク**: Next.js (App Router)
-* **開発言語**: TypeScript
-* **スタイリング**: Tailwind CSS
-* **UIコンポーネント**: shadcn/ui
-  * 選定理由: ヘッドレスUIベースでカスタマイズ性が高く、Tailwindとの親和性が最高。無駄な依存関係を減らし、パフォーマンスの高い美しいUIを構築可能。
+- **フレームワーク**: Next.js (App Router)
+- **開発言語**: TypeScript
+- **スタイリング**: Tailwind CSS
+- **UIコンポーネント**: shadcn/ui
+  - 選定理由: ヘッドレスUIベースでカスタマイズ性が高く、Tailwindとの親和性が最高。無駄な依存関係を減らし、パフォーマンスの高い美しいUIを構築可能。
 
 ## 3. バックエンド・インフラ
+
 APIルートの処理、ユーザー認証、データ保存、およびホスティング環境。
 
-* **ホスティング環境**: Cloudflare Pages (`@cloudflare/next-on-pages`)
-  * 選定理由: 無料枠でも商用利用（アフィリエイト等）が明記して許可されている。Next.jsのSSRやAPIルートをエッジサーバーで高速に実行可能。
-* **BaaS (認証・データベース)**: Supabase
-  * **認証 (Auth)**: メールアドレス/パスワード認証、Google OAuth（離脱率低下のため推奨）。
-  * **データベース**: PostgreSQL
-  * 選定理由: 無料・商用利用可能。Row Level Security (RLS) を活用することで、ユーザー単位のデータアクセス制御（他人の本棚を見られない等）をバックエンド側で堅牢かつ容易に実装可能。
+- **ホスティング環境**: Cloudflare Pages (`@cloudflare/next-on-pages`)
+  - 選定理由: 無料枠でも商用利用（アフィリエイト等）が明記して許可されている。Next.jsのSSRやAPIルートをエッジサーバーで高速に実行可能。
+- **BaaS (認証・データベース)**: Supabase
+  - **認証 (Auth)**: メールアドレス/パスワード認証、Google OAuth（離脱率低下のため推奨）。
+  - **データベース**: PostgreSQL
+  - 選定理由: 無料・商用利用可能。Row Level Security (RLS) を活用することで、ユーザー単位のデータアクセス制御（他人の本棚を見られない等）をバックエンド側で堅牢かつ容易に実装可能。
 
 ## 4. データ取得（Chrome拡張機能）
+
 ユーザーが閲覧中のストアページから、蔵書データを自動でスクレイピングしてシステムへ送信するツール。
 
-* **フレームワーク**: Vite
-* **プラグイン**: CRXJS Vite Plugin (Chrome拡張機能開発用)
-* **開発言語**: TypeScript
-  * 選定理由: Webアプリ側（Next.js）と型定義（Type/Interface）を共有でき、開発・保守の体験が向上する。高速なホットリロード(HMR)により拡張機能の開発効率が高い。
+- **フレームワーク**: Vite
+- **プラグイン**: CRXJS Vite Plugin (Chrome拡張機能開発用)
+- **開発言語**: TypeScript
+  - 選定理由: Webアプリ側（Next.js）と型定義（Type/Interface）を共有でき、開発・保守の体験が向上する。高速なホットリロード(HMR)により拡張機能の開発効率が高い。
 
 ## 5. 開発環境・コード品質管理
+
 チーム開発（または将来的な規模拡大）を見据えた、コードの品質と一貫性を保つツール群。
 
-* **静的解析 (Linter)**: ESLint
-* **コードフォーマッター**: Prettier
-  * 連携: `eslint-config-prettier` 等を用いて、ESLintのフォーマットルールを無効化し、Prettierに一本化して競合を防ぐ。
-* **パッケージ管理**: pnpm
-  * minimumReleaseAgeを設定する
+- **静的解析 (Linter)**: ESLint
+- **コードフォーマッター**: Prettier
+  - 連携: `eslint-config-prettier` 等を用いて、ESLintのフォーマットルールを無効化し、Prettierに一本化して競合を防ぐ。
+- **パッケージ管理**: pnpm
+  - minimumReleaseAgeを設定する
 
 ## 6. 全体データフロー（MVP）
+
 1. ユーザーが **Next.js (Cloudflare Pages)** のサイトにアクセスし、**Supabase Auth** でログイン。
 2. ユーザーが **Chrome拡張機能 (Vite)** をインストール。
 3. ユーザーが対象ストア（Kindle / DMM）の購入履歴・本棚ページを開く。

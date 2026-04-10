@@ -13,13 +13,13 @@
 
 ## 技術スタック
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui |
-| Hosting | Cloudflare Pages (`@cloudflare/next-on-pages`) |
-| BaaS | Supabase (Auth + PostgreSQL + RLS) |
-| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript |
-| Package Manager | pnpm workspaces (monorepo) |
+| Layer            | Technology                                                      |
+| ---------------- | --------------------------------------------------------------- |
+| Frontend         | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui |
+| Hosting          | Cloudflare Pages (`@cloudflare/next-on-pages`)                  |
+| BaaS             | Supabase (Auth + PostgreSQL + RLS)                              |
+| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript                            |
+| Package Manager  | pnpm workspaces (monorepo)                                      |
 
 ## リポジトリ構成
 

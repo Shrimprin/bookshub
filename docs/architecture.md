@@ -104,15 +104,15 @@ hons/
 
 ## 4. 設計判断の根拠
 
-| 判断 | 理由 |
-|------|------|
-| pnpm workspaces モノレポ | `packages/shared` で型・スキーマ共有。Turborepoは現段階では過剰 |
-| `(auth)` / `(protected)` ルートグループ | 認証済み・未認証で layout と保護を分離 |
-| `lib/supabase/` を3ファイルに分割 | Cloudflare Edge Runtime + `@supabase/ssr` の推奨パターン |
-| `components/layout/` と `features/` を分離 | layoutは構造的関心事、featuresは機能的関心事 |
-| `duplicate-alert/` はUIのみ | 重複検知ロジックは `api/scrape` サーバー側に置く |
-| `extension/content/shared/` | ストアをまたぐパース・API送信ロジックをDRY化 |
-| `packages/shared/schemas/` にZodスキーマ | Extension→Web API間のデータ整合性を両側で保証 |
+| 判断                                       | 理由                                                            |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| pnpm workspaces モノレポ                   | `packages/shared` で型・スキーマ共有。Turborepoは現段階では過剰 |
+| `(auth)` / `(protected)` ルートグループ    | 認証済み・未認証で layout と保護を分離                          |
+| `lib/supabase/` を3ファイルに分割          | Cloudflare Edge Runtime + `@supabase/ssr` の推奨パターン        |
+| `components/layout/` と `features/` を分離 | layoutは構造的関心事、featuresは機能的関心事                    |
+| `duplicate-alert/` はUIのみ                | 重複検知ロジックは `api/scrape` サーバー側に置く                |
+| `extension/content/shared/`                | ストアをまたぐパース・API送信ロジックをDRY化                    |
+| `packages/shared/schemas/` にZodスキーマ   | Extension→Web API間のデータ整合性を両側で保証                   |
 
 ---
 

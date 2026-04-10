@@ -24,52 +24,52 @@ cp .env.example apps/web/.env.local
 
 ## コマンドリファレンス（ルート）
 
-| コマンド | 説明 |
-|---------|------|
-| `pnpm dev` | Web アプリの開発サーバーを起動 (localhost:3000) |
-| `pnpm build` | 全パッケージをビルド |
-| `pnpm lint` | 全パッケージで ESLint を実行 |
-| `pnpm format` | Prettier でコードを整形 |
-| `pnpm format:check` | フォーマットのチェックのみ（整形しない） |
+| コマンド            | 説明                                            |
+| ------------------- | ----------------------------------------------- |
+| `pnpm dev`          | Web アプリの開発サーバーを起動 (localhost:3000) |
+| `pnpm build`        | 全パッケージをビルド                            |
+| `pnpm lint`         | 全パッケージで ESLint を実行                    |
+| `pnpm format`       | Prettier でコードを整形                         |
+| `pnpm format:check` | フォーマットのチェックのみ（整形しない）        |
 
 ## パッケージ別コマンド
 
 ### apps/web
 
-| コマンド | 説明 |
-|---------|------|
-| `pnpm --filter web dev` | 開発サーバー |
-| `pnpm --filter web build` | Next.js ビルド |
-| `pnpm --filter web pages:build` | Cloudflare Pages 用ビルド |
-| `pnpm --filter web preview` | Cloudflare Pages をローカルでプレビュー |
-| `pnpm --filter web deploy` | Cloudflare Pages へデプロイ |
+| コマンド                        | 説明                                    |
+| ------------------------------- | --------------------------------------- |
+| `pnpm --filter web dev`         | 開発サーバー                            |
+| `pnpm --filter web build`       | Next.js ビルド                          |
+| `pnpm --filter web pages:build` | Cloudflare Pages 用ビルド               |
+| `pnpm --filter web preview`     | Cloudflare Pages をローカルでプレビュー |
+| `pnpm --filter web deploy`      | Cloudflare Pages へデプロイ             |
 
 ### apps/extension
 
-| コマンド | 説明 |
-|---------|------|
-| `pnpm --filter extension dev` | 拡張機能の開発ビルド（HMR あり） |
-| `pnpm --filter extension build` | 拡張機能の本番ビルド |
+| コマンド                        | 説明                             |
+| ------------------------------- | -------------------------------- |
+| `pnpm --filter extension dev`   | 拡張機能の開発ビルド（HMR あり） |
+| `pnpm --filter extension build` | 拡張機能の本番ビルド             |
 
 ### packages/shared
 
-| コマンド | 説明 |
-|---------|------|
+| コマンド                              | 説明                     |
+| ------------------------------------- | ------------------------ |
 | `pnpm --filter @bookhub/shared build` | 型定義・スキーマをビルド |
 
 ## 環境変数リファレンス
 
 <!-- AUTO-GENERATED: generated from .env.example -->
 
-| 変数 | 必須 | 説明 |
-|-----|------|------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase プロジェクト URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase 匿名キー（クライアントサイドで使用） |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase サービスロールキー（サーバーサイドのみ） |
-| `RAKUTEN_APP_ID` | No* | 楽天ブックス API のアプリ ID |
-| `GOOGLE_BOOKS_API_KEY` | No* | Google Books API キー |
+| 変数                            | 必須 | 説明                                              |
+| ------------------------------- | ---- | ------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Yes  | Supabase プロジェクト URL                         |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes  | Supabase 匿名キー（クライアントサイドで使用）     |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Yes  | Supabase サービスロールキー（サーバーサイドのみ） |
+| `RAKUTEN_APP_ID`                | No\* | 楽天ブックス API のアプリ ID                      |
+| `GOOGLE_BOOKS_API_KEY`          | No\* | Google Books API キー                             |
 
-*書籍情報 API はどちらか一方が必要
+\*書籍情報 API はどちらか一方が必要
 
 <!-- /AUTO-GENERATED -->
 

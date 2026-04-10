@@ -8,14 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Planned Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui |
-| Hosting | Cloudflare Pages (`@cloudflare/next-on-pages`) |
-| BaaS | Supabase (Auth + PostgreSQL with RLS) |
-| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript |
-| Linter/Formatter | ESLint + Prettier (via `eslint-config-prettier`) |
-| PackageManager | pnpm |
+| Layer            | Technology                                                |
+| ---------------- | --------------------------------------------------------- |
+| Frontend         | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui |
+| Hosting          | Cloudflare Pages (`@cloudflare/next-on-pages`)            |
+| BaaS             | Supabase (Auth + PostgreSQL with RLS)                     |
+| Chrome Extension | Vite + CRXJS Vite Plugin, TypeScript                      |
+| Linter/Formatter | ESLint + Prettier (via `eslint-config-prettier`)          |
+| PackageManager   | pnpm                                                      |
 
 ## Architecture Overview
 
@@ -25,6 +25,7 @@ The system has two main components that share TypeScript type definitions:
 2. **Chrome Extension (Vite/CRXJS)** — KindleやDMMのページからDOMをスクレイピングし、Next.jsのAPIエンドポイントへPOSTする。
 
 ### Data Flow
+
 ```
 User → Supabase Auth → Chrome Extension scrapes store pages
 → POST to Next.js API → Supabase PostgreSQL
@@ -32,11 +33,13 @@ User → Supabase Auth → Chrome Extension scrapes store pages
 ```
 
 ### Supabase RLS
+
 各ユーザーは自分のデータのみアクセス可能。Row Level Security でバックエンド側で制御する。
 
 ## MVP Scope
 
 実装対象:
+
 - 書影ギャラリー表示（購入ストアのタグ付き）
 - タイトル/作者名での絞り込み検索
 - 書籍名検索からの手動登録（楽天ブックスAPI or Google Books API）
@@ -44,6 +47,7 @@ User → Supabase Auth → Chrome Extension scrapes store pages
 - 次巻のステータス表示
 
 MVP対象外（フェーズ2以降）:
+
 - ネイティブアプリ、最安値シミュレーター、プッシュ通知
 
 ## Development Notes
