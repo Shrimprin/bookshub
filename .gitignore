@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+
+# Build outputs
+.next
+dist
+build
+.turbo
+out
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Cloudflare
+.wrangler
+
+# Editor
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pnpm
+.pnpm-debug.log
