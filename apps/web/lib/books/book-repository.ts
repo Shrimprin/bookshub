@@ -10,12 +10,12 @@ export interface BookRow {
 interface InsertBookInput {
   title: string
   author: string
-  volumeNumber?: number
+  volumeNumber?: number | undefined
   store: string
-  thumbnailUrl?: string
-  isbn?: string
-  publishedAt?: string
-  isAdult?: boolean
+  thumbnailUrl?: string | undefined
+  isbn?: string | undefined
+  publishedAt?: string | undefined
+  isAdult?: boolean | undefined
 }
 
 export function normalizeText(text: string): string {
