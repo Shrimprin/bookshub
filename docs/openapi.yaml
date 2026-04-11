@@ -30,6 +30,8 @@ tags:
     description: Chrome 拡張機能からのスクレイピングデータ受信
   - name: books
     description: 蔵書の CRUD 操作（Web アプリ用）
+  - name: book-search
+    description: 外部 API（楽天ブックス / Google Books）を使った書籍検索
 
 security:
   - bearerAuth: []
@@ -197,6 +199,86 @@ paths:
               schema:
                 type: string
                 example: Authorization, Content-Type
+
+  /api/books/search:
+    get:
+      summary: 外部 API で書籍を検索
+      description: |
+        楽天ブックス API（プライマリ）または Google Books API（フォールバック）を使って書籍を検索します。
+        タイトル・著者名での検索に対応し、ISBN・巻数・書影 URL を含む正規化された結果を返します。
+
+        **フォールバック戦略:**
+        1. 楽天ブックス API で検索（`RAKUTEN_APP_ID` 設定時）
+        2. 結果なし or エラー → Google Books API にフォールバック（`GOOGLE_BOOKS_API_KEY` 設定時）
+        3. 両方失敗 → `source: "none"` + エラー情報を返す（200 レスポンス）
+      operationId: searchBooks
+      tags:
+        - book-search
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: 検索クエリ（タイトル・著者名）
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: ページ番号
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 10
+          description: 1ページあたりの件数
+      responses:
+        '200':
+          description: 検索結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookSearchResult'
+              examples:
+                with_results:
+                  summary: 検索結果あり（楽天）
+                  value:
+                    items:
+                      - title: ONE PIECE 107
+                        author: 尾田栄一郎
+                        isbn: '9784088838625'
+                        volumeNumber: 107
+                        thumbnailUrl: https://thumbnail.image.rakuten.co.jp/example.jpg
+                        publishedAt: '2024-03-04'
+                    totalCount: 83
+                    source: rakuten
+                    hasMore: true
+                no_results:
+                  summary: 検索結果なし
+                  value:
+                    items: []
+                    totalCount: 0
+                    source: none
+                    error: no_results
+                    hasMore: false
+        '400':
+          description: クエリパラメータ不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/books:
     get:
@@ -702,6 +784,66 @@ components:
           items:
             $ref: '#/components/schemas/Store'
           description: 既に所持しているストアの一覧（二度買い防止情報）
+
+    BookSearchItem:
+      type: object
+      required:
+        - title
+        - author
+      properties:
+        title:
+          type: string
+          description: 書籍タイトル
+          example: ONE PIECE 107
+        author:
+          type: string
+          description: 著者名
+          example: 尾田栄一郎
+        isbn:
+          type: string
+          description: ISBN（13桁優先）
+          example: '9784088838625'
+        volumeNumber:
+          type: integer
+          description: 巻数（タイトルからパース）
+          example: 107
+        thumbnailUrl:
+          type: string
+          format: uri
+          description: 書影 URL
+        publishedAt:
+          type: string
+          description: 出版日（YYYY-MM-DD / YYYY-MM / YYYY）
+
+    BookSearchResult:
+      type: object
+      required:
+        - items
+        - totalCount
+        - source
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookSearchItem'
+        totalCount:
+          type: integer
+          minimum: 0
+          description: 検索結果の総件数
+        source:
+          type: string
+          enum:
+            - rakuten
+            - google
+            - none
+          description: 結果を返した API ソース
+        hasMore:
+          type: boolean
+          description: 次ページが存在するか
+        error:
+          type: string
+          description: 検索失敗時のエラーコード（source が none の場合のみ）
 
     ErrorResponse:
       type: object

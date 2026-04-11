@@ -1,0 +1,42 @@
+{
+  "totalItems": 150,
+  "items": [
+    {
+      "id": "abc123",
+      "volumeInfo": {
+        "title": "ONE PIECE 107",
+        "authors": ["尾田栄一郎"],
+        "publishedDate": "2024-03-04",
+        "industryIdentifiers": [
+          { "type": "ISBN_13", "identifier": "9784088838625" },
+          { "type": "ISBN_10", "identifier": "4088838629" }
+        ],
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=abc123&printsec=frontcover&img=1&zoom=1",
+          "smallThumbnail": "http://books.google.com/books/content?id=abc123&printsec=frontcover&img=1&zoom=5"
+        }
+      }
+    },
+    {
+      "id": "def456",
+      "volumeInfo": {
+        "title": "ONE PIECE 106",
+        "authors": ["尾田栄一郎"],
+        "publishedDate": "2023-10",
+        "industryIdentifiers": [{ "type": "ISBN_13", "identifier": "9784088836645" }],
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=def456&printsec=frontcover&img=1&zoom=1"
+        }
+      }
+    },
+    {
+      "id": "ghi789",
+      "volumeInfo": {
+        "title": "火花",
+        "authors": ["又吉直樹"],
+        "publishedDate": "2015",
+        "industryIdentifiers": [{ "type": "ISBN_13", "identifier": "9784163902302" }]
+      }
+    }
+  ]
+}

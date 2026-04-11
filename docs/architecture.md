@@ -62,7 +62,7 @@ hons/
 │   │   │   │   ├── client.ts       # ブラウザ用 (createBrowserClient)
 │   │   │   │   ├── server.ts       # Server Component / Route Handler用 (createServerClient)
 │   │   │   │   └── middleware.ts   # セッション更新用
-│   │   │   └── books-api/          # 楽天ブックスAPI / Google Books API呼び出し
+│   │   │   └── book-search/         # 楽天ブックスAPI / Google Books API 書籍検索
 │   │   ├── hooks/                  # カスタムReact Hooks
 │   │   ├── middleware.ts           # ルート保護・セッションリフレッシュ
 │   │   ├── next.config.ts
