@@ -225,6 +225,112 @@ result.duplicates.forEach((dup) => {
 })
 ```
 
+### `GET /api/books` — 蔵書一覧取得
+
+ログインユーザーの蔵書一覧を取得します。検索・フィルタ・ページネーションに対応。
+
+#### リクエスト
+
+```text
+GET /api/books?q=ワンピ&store=kindle&isAdult=false&page=1&limit=20
+Authorization: Bearer <token>
+```
+
+| パラメータ | 型     | 必須 | 説明                                   |
+| ---------- | ------ | ---- | -------------------------------------- |
+| `q`        | string | No   | タイトル/著者名の部分一致（2文字以上） |
+| `store`    | string | No   | ストアフィルタ（kindle/dmm/other）     |
+| `isAdult`  | string | No   | 成人向けフィルタ（true/false）         |
+| `page`     | number | No   | ページ番号（デフォルト: 1）            |
+| `limit`    | number | No   | 件数（デフォルト: 20、最大: 100）      |
+
+#### レスポンス（200 OK）
+
+```json
+{
+  "books": [
+    {
+      "id": "book-uuid",
+      "title": "ワンピース",
+      "author": "尾田栄一郎",
+      "volumeNumber": 107,
+      "thumbnailUrl": "https://example.com/cover.jpg",
+      "isbn": "9784088835099",
+      "publishedAt": "2024-03-04",
+      "isAdult": false,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "userBookId": "user-book-uuid",
+      "store": "kindle",
+      "userBookCreatedAt": "2024-03-04T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
+
+### `POST /api/books` — 書籍の手動登録
+
+手動で書籍を登録します。別ストアで既に所持している場合は二度買い警告を返します。
+
+#### リクエスト
+
+```json
+POST /api/books
+Authorization: Bearer <token>
+
+{
+  "title": "ワンピース",
+  "author": "尾田栄一郎",
+  "volumeNumber": 107,
+  "store": "kindle",
+  "isAdult": false
+}
+```
+
+#### レスポンス（201 Created）
+
+```json
+{
+  "book": { "id": "...", "title": "ワンピース", ... },
+  "alreadyOwned": true,
+  "existingStores": ["dmm"]
+}
+```
+
+#### エラー（409 Conflict）
+
+同一ストアで既に登録済みの場合:
+
+```json
+{ "error": "conflict", "message": "この書籍は既に kindle で登録されています" }
+```
+
+### `PATCH /api/books/{id}` — store の更新
+
+user_books レコードの store を更新します。`{id}` は user_books.id（UUID）。
+
+```json
+PATCH /api/books/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer <token>
+
+{ "store": "dmm" }
+```
+
+レスポンス: 更新後の `BookWithStore` オブジェクト（200 OK）。存在しない場合は 404。
+
+### `DELETE /api/books/{id}` — 所持書籍の削除
+
+user_books レコードを削除します。books マスタは削除しません。`{id}` は user_books.id（UUID）。
+
+```text
+DELETE /api/books/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer <token>
+```
+
+レスポンス: `{ "message": "Deleted" }`（200 OK）。存在しない場合は 404。
+
 ## コードスタイル
 
 - TypeScript strict モード（`tsconfig.base.json` 参照）
