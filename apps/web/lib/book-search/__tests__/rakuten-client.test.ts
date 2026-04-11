@@ -12,6 +12,7 @@ function mockFetch(response: unknown, status = 200) {
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(),
     json: () => Promise.resolve(response),
   })
 }
@@ -103,6 +104,18 @@ describe('searchRakutenBooks', () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
 
       await expect(searchRakutenBooks({ query: 'test' })).rejects.toThrow()
+    })
+
+    it('レスポンスサイズ超過でエラーを throw する', async () => {
+      stubRakutenEnv()
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-length': '2000000' }),
+        json: () => Promise.resolve({}),
+      })
+
+      await expect(searchRakutenBooks({ query: 'test' })).rejects.toThrow('response too large')
     })
   })
 })

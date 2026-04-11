@@ -9,6 +9,7 @@ import { extractVolumeNumber } from './volume-parser'
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1/volumes'
 
 const TIMEOUT_MS = 5000
+const MAX_RESPONSE_BYTES = 1_000_000
 
 /**
  * Google Books APIで書籍を検索し、正規化された結果を返す。
@@ -38,6 +39,11 @@ export async function searchGoogleBooks(params: BookSearchParams): Promise<BookS
 
     if (!response.ok) {
       throw new Error(`Google Books API error: HTTP ${response.status}`)
+    }
+
+    const contentLength = response.headers.get('content-length')
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+      throw new Error('Google Books API response too large')
     }
 
     const data = (await response.json()) as GoogleBooksResponse

@@ -85,6 +85,12 @@ describe('GET /api/books/search', () => {
       const response = await GET(request)
       expect(response.status).toBe(400)
     })
+
+    it('page が上限超過で 400 を返す', async () => {
+      const request = createGetRequest({ q: 'test', page: '1001' }, 'valid-token')
+      const response = await GET(request)
+      expect(response.status).toBe(400)
+    })
   })
 
   describe('正常系', () => {
@@ -151,6 +157,25 @@ describe('GET /api/books/search', () => {
 
       const body = await response.json()
       expect(body.error).toBe('internal_error')
+    })
+
+    it('APIキー未設定で 503 を返す（設定情報を漏洩させない）', async () => {
+      const mockResult: BookSearchResult = {
+        items: [],
+        totalCount: 0,
+        source: 'none',
+        error: 'no_api_keys_configured',
+        hasMore: false,
+      }
+      vi.mocked(searchBooks).mockResolvedValue(mockResult)
+
+      const request = createGetRequest({ q: 'test' }, 'valid-token')
+      const response = await GET(request)
+      expect(response.status).toBe(503)
+
+      const body = await response.json()
+      expect(body.error).toBe('service_unavailable')
+      expect(body.message).not.toContain('api_keys')
     })
   })
 })

@@ -4,6 +4,7 @@ import { extractVolumeNumber } from './volume-parser'
 const RAKUTEN_BOOKS_API_URL = 'https://app.rakuten.co.jp/services/api/BooksBook/Search/20170404'
 
 const TIMEOUT_MS = 5000
+const MAX_RESPONSE_BYTES = 1_000_000
 
 /**
  * 楽天ブックスAPIで書籍を検索し、正規化された結果を返す。
@@ -31,6 +32,11 @@ export async function searchRakutenBooks(
 
     if (!response.ok) {
       throw new Error(`Rakuten Books API error: HTTP ${response.status}`)
+    }
+
+    const contentLength = response.headers.get('content-length')
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+      throw new Error('Rakuten Books API response too large')
     }
 
     const data = (await response.json()) as RakutenBooksResponse

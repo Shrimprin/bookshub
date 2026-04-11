@@ -21,7 +21,7 @@ function parseSearchQuery(searchParams: URLSearchParams) {
 
   const rawPage = searchParams.get('page')
   const page = rawPage ? Number(rawPage) : 1
-  if (!Number.isInteger(page) || page < 1) return null
+  if (!Number.isInteger(page) || page < 1 || page > 1000) return null
 
   const rawLimit = searchParams.get('limit')
   const limit = rawLimit ? Number(rawLimit) : 10
@@ -57,6 +57,18 @@ export async function GET(request: Request) {
       page: parsed.page,
       limit: parsed.limit,
     })
+
+    // APIキー未設定は内部設定の問題 → 503 で返す（設定情報を漏洩させない）
+    if (
+      result.source === 'none' &&
+      'error' in result &&
+      result.error === 'no_api_keys_configured'
+    ) {
+      return NextResponse.json(
+        { error: 'service_unavailable', message: 'Book search is temporarily unavailable' },
+        { status: 503 },
+      )
+    }
 
     return NextResponse.json(result, { status: 200 })
   } catch (err) {
