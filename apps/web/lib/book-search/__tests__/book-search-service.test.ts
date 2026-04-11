@@ -88,7 +88,7 @@ describe('searchBooks', () => {
   })
 
   describe('両方失敗', () => {
-    it('source: none とエラーメッセージを返す', async () => {
+    it('source: none と all_apis_failed エラーを返す', async () => {
       vi.stubEnv('RAKUTEN_APP_ID', 'test-id')
       vi.stubEnv('GOOGLE_BOOKS_API_KEY', 'test-key')
       vi.mocked(searchRakutenBooks).mockRejectedValue(new Error('rakuten error'))
@@ -99,7 +99,21 @@ describe('searchBooks', () => {
       expect(result.source).toBe('none')
       expect(result.items).toHaveLength(0)
       expect(result.totalCount).toBe(0)
-      expect('error' in result && result.error).toBeTruthy()
+      expect('error' in result && result.error).toBe('all_apis_failed')
+    })
+  })
+
+  describe('楽天0件 + Google0件', () => {
+    it('no_results エラーを返す（APIは正常応答）', async () => {
+      vi.stubEnv('RAKUTEN_APP_ID', 'test-id')
+      vi.stubEnv('GOOGLE_BOOKS_API_KEY', 'test-key')
+      vi.mocked(searchRakutenBooks).mockResolvedValue({ items: [], totalCount: 0 })
+      vi.mocked(searchGoogleBooks).mockResolvedValue({ items: [], totalCount: 0 })
+
+      const result = await searchBooks({ query: 'xxxnoexist' })
+
+      expect(result.source).toBe('none')
+      expect('error' in result && result.error).toBe('no_results')
     })
   })
 
@@ -115,7 +129,7 @@ describe('searchBooks', () => {
       expect(searchGoogleBooks).not.toHaveBeenCalled()
     })
 
-    it('楽天が失敗し Google キーなしの場合 source: none を返す', async () => {
+    it('楽天が失敗し Google キーなしの場合 all_apis_failed を返す', async () => {
       vi.stubEnv('RAKUTEN_APP_ID', 'test-id')
       vi.stubEnv('GOOGLE_BOOKS_API_KEY', '')
       vi.mocked(searchRakutenBooks).mockRejectedValue(new Error('error'))
@@ -123,6 +137,18 @@ describe('searchBooks', () => {
       const result = await searchBooks({ query: 'test' })
 
       expect(result.source).toBe('none')
+      expect('error' in result && result.error).toBe('all_apis_failed')
+    })
+
+    it('楽天0件 + Google キーなしの場合 no_results を返す', async () => {
+      vi.stubEnv('RAKUTEN_APP_ID', 'test-id')
+      vi.stubEnv('GOOGLE_BOOKS_API_KEY', '')
+      vi.mocked(searchRakutenBooks).mockResolvedValue({ items: [], totalCount: 0 })
+
+      const result = await searchBooks({ query: 'test' })
+
+      expect(result.source).toBe('none')
+      expect('error' in result && result.error).toBe('no_results')
     })
   })
 

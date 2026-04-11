@@ -13,17 +13,18 @@ async function authenticate(request: Request) {
 }
 
 function parseSearchQuery(searchParams: URLSearchParams) {
-  const q = searchParams.get('q')
+  const rawQ = searchParams.get('q')
+  const q = rawQ?.trim()
   if (!q || q.length === 0 || q.length > 200) {
     return null
   }
 
   const rawPage = searchParams.get('page')
-  const page = rawPage ? parseInt(rawPage, 10) : 1
+  const page = rawPage ? Number(rawPage) : 1
   if (!Number.isInteger(page) || page < 1) return null
 
   const rawLimit = searchParams.get('limit')
-  const limit = rawLimit ? parseInt(rawLimit, 10) : 10
+  const limit = rawLimit ? Number(rawLimit) : 10
   if (!Number.isInteger(limit) || limit < 1 || limit > 30) return null
 
   return { q, page, limit }

@@ -25,11 +25,13 @@ export async function searchBooks(params: BookSearchParams): Promise<BookSearchR
 
   const limit = params.limit ?? 10
   const page = params.page ?? 1
+  let anyApiResponded = false
 
   // 楽天で検索を試行
   if (hasRakuten) {
     try {
       const result = await searchRakutenBooks(params)
+      anyApiResponded = true
       if (result.items.length > 0) {
         return {
           items: result.items,
@@ -48,6 +50,7 @@ export async function searchBooks(params: BookSearchParams): Promise<BookSearchR
   if (hasGoogle) {
     try {
       const result = await searchGoogleBooks(params)
+      anyApiResponded = true
       if (result.items.length > 0) {
         return {
           items: result.items,
@@ -56,11 +59,16 @@ export async function searchBooks(params: BookSearchParams): Promise<BookSearchR
           hasMore: page * limit < result.totalCount,
         }
       }
-      return { items: [], totalCount: 0, source: 'none', error: 'no_results', hasMore: false }
     } catch {
       // Google も失敗
     }
   }
 
-  return { items: [], totalCount: 0, source: 'none', error: 'all_apis_failed', hasMore: false }
+  return {
+    items: [],
+    totalCount: 0,
+    source: 'none',
+    error: anyApiResponded ? 'no_results' : 'all_apis_failed',
+    hasMore: false,
+  }
 }
