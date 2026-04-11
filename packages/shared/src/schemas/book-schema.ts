@@ -9,6 +9,8 @@ const ALLOWED_THUMBNAIL_HOSTS = [
   'images-fe.ssl-images-amazon.com',
   'pics.dmm.co.jp',
   'p.dmm.co.jp',
+  'thumbnail.image.rakuten.co.jp',
+  'books.google.com',
 ]
 
 export const thumbnailUrlSchema = z
