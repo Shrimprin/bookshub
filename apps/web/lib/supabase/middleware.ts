@@ -28,9 +28,11 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isApiPath = pathname.startsWith('/api/')
 
-  // API ルートへの Bearer トークン付きリクエストは Cookie 認証をスキップし、Route Handler に委譲する
+  // Chrome 拡張機能専用 API: Bearer トークン認証は Route Handler 側で行うため、ミドルウェアの Cookie 認証をスキップ
+  // 新しい Bearer 認証 API を追加する場合はここにパスを追加すること
+  const BEARER_AUTH_PATHS = ['/api/scrape']
   const hasBearerToken = request.headers.get('authorization')?.startsWith('Bearer ')
-  if (isApiPath && hasBearerToken) {
+  if (hasBearerToken && BEARER_AUTH_PATHS.includes(pathname)) {
     return NextResponse.next({ request })
   }
 

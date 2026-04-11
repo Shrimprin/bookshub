@@ -5,17 +5,19 @@ import { processScrapePayload } from '@/lib/scrape/process-scrape'
 
 export const runtime = 'edge'
 
+// Chrome 拡張機能は CORS をバイパスするため、CORS ヘッダーは不要。
+// ブラウザからの直接アクセスを許可しないよう、OPTIONS は最低限のレスポンスのみ返す。
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     },
   })
 }
 
+// TODO: レート制限は Cloudflare WAF のレートリミットルールで設定すること（Edge Runtime ではステートレスのため）
 export async function POST(request: Request) {
   try {
     // 1. Bearer トークン認証
@@ -53,11 +55,11 @@ export async function POST(request: Request) {
     // 3. Zod バリデーション
     const parsed = scrapePayloadSchema.safeParse(body)
     if (!parsed.success) {
+      console.error('[POST /api/scrape] Validation failed:', parsed.error.issues)
       return NextResponse.json(
         {
           error: 'validation_error',
           message: 'Request body validation failed',
-          details: parsed.error.issues,
         },
         { status: 400 },
       )
@@ -66,12 +68,7 @@ export async function POST(request: Request) {
     // 4. ビジネスロジック実行
     const result = await processScrapePayload(supabase, user.id, parsed.data.books)
 
-    return NextResponse.json(result, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
+    return NextResponse.json(result, { status: 200 })
   } catch (err) {
     console.error('[POST /api/scrape] Unexpected error:', err)
     return NextResponse.json(

@@ -96,6 +96,7 @@ describe('POST /api/scrape', () => {
 
       const body = await response.json()
       expect(body.error).toBe('validation_error')
+      expect(body.details).toBeUndefined()
     })
   })
 
@@ -162,5 +163,10 @@ describe('OPTIONS /api/scrape', () => {
     expect(response.status).toBe(204)
     expect(response.headers.get('Access-Control-Allow-Methods')).toBe('POST, OPTIONS')
     expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Authorization, Content-Type')
+  })
+
+  it('Access-Control-Allow-Origin を返さない', async () => {
+    const response = await OPTIONS()
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull()
   })
 })
