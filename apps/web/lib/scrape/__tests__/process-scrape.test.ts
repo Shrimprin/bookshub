@@ -117,7 +117,18 @@ describe('processScrapePayload', () => {
         books: {
           select: { data: [], error: null },
           insert: {
-            data: [{ id: 'book-1', title: 'テスト', author: '著者', volume_number: null }],
+            data: [
+              {
+                id: 'book-1',
+                title: 'テスト',
+                author: '著者',
+                volume_number: null,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
+            ],
             error: null,
           },
         },
@@ -143,7 +154,18 @@ describe('processScrapePayload', () => {
         books: {
           select: { data: [], error: null },
           insert: {
-            data: [{ id: 'book-1', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 }],
+            data: [
+              {
+                id: 'book-1',
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
+            ],
             error: null,
           },
         },
@@ -168,7 +190,16 @@ describe('processScrapePayload', () => {
           select: { data: [], error: null },
           insert: {
             data: [
-              { id: 'new-book-id', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 },
+              {
+                id: 'new-book-id',
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
             ],
             error: null,
           },
@@ -196,6 +227,9 @@ describe('processScrapePayload', () => {
                 title: 'テスト作品',
                 author: 'テスト著者',
                 volume_number: null,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
                 is_adult: true,
               },
             ],
@@ -220,7 +254,16 @@ describe('processScrapePayload', () => {
         books: {
           select: {
             data: [
-              { id: existingBookId, title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 },
+              {
+                id: existingBookId,
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
             ],
             error: null,
           },
@@ -253,7 +296,16 @@ describe('processScrapePayload', () => {
         books: {
           select: {
             data: [
-              { id: existingBookId, title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 },
+              {
+                id: existingBookId,
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
             ],
             error: null,
           },
@@ -288,7 +340,18 @@ describe('processScrapePayload', () => {
         books: {
           select: { data: [], error: null },
           insert: {
-            data: [{ id: 'single-vol-id', title: '火花', author: '又吉直樹', volume_number: null }],
+            data: [
+              {
+                id: 'single-vol-id',
+                title: '火花',
+                author: '又吉直樹',
+                volume_number: null,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
+            ],
             error: null,
           },
         },
@@ -332,7 +395,18 @@ describe('processScrapePayload', () => {
       const supabase = createMockSupabase({
         books: {
           select: {
-            data: [{ id: 'book-1', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 }],
+            data: [
+              {
+                id: 'book-1',
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+              },
+            ],
             error: null,
           },
         },

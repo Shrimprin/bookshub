@@ -71,7 +71,16 @@ describe('normalizeText', () => {
 
 describe('findExistingBook', () => {
   it('既存の書籍が見つかった場合はレコードを返す', async () => {
-    const existing = { id: 'book-1', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 }
+    const existing = {
+      id: 'book-1',
+      title: 'ワンピース',
+      author: '尾田栄一郎',
+      volume_number: 107,
+      thumbnail_url: null,
+      isbn: null,
+      published_at: null,
+      is_adult: false,
+    }
     const supabase = createMockSupabase({
       books: { select: { data: [existing], error: null } },
     })
@@ -115,7 +124,16 @@ describe('findExistingBook', () => {
 
 describe('insertBook', () => {
   it('正常に INSERT して結果を返す', async () => {
-    const inserted = { id: 'new-id', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 }
+    const inserted = {
+      id: 'new-id',
+      title: 'ワンピース',
+      author: '尾田栄一郎',
+      volume_number: 107,
+      thumbnail_url: null,
+      isbn: null,
+      published_at: null,
+      is_adult: false,
+    }
     const supabase = createMockSupabase({
       books: {
         select: { data: [], error: null },
@@ -140,6 +158,10 @@ describe('insertBook', () => {
       title: 'ワンピース',
       author: '尾田栄一郎',
       volume_number: 107,
+      thumbnail_url: null,
+      isbn: null,
+      published_at: null,
+      is_adult: false,
     }
     const supabase = createMockSupabase({
       books: {

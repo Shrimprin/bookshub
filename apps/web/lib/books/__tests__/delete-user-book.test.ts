@@ -3,49 +3,21 @@ import { deleteUserBook } from '../delete-user-book'
 
 // --- Mock helpers ---
 
-function createMockSupabase(handlers: {
-  select_result?: {
-    data: Record<string, unknown> | null
-    error: { message: string } | null
-  }
-  delete_result?: {
-    error: { message: string } | null
-  }
-}) {
-  const selectBuilder = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi
-      .fn()
-      .mockReturnValue(
-        Promise.resolve(handlers.select_result ?? { data: null, error: { message: 'not found' } }),
-      ),
-  }
-
-  const deleteBuilder = {
+function createMockSupabase(result: { error: { message: string } | null; count: number | null }) {
+  const builder: Record<string, unknown> = {
     delete: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
-    then: undefined as unknown,
   }
-  Object.defineProperty(deleteBuilder, 'then', {
+  Object.defineProperty(builder, 'then', {
     value: (resolve: (v: unknown) => void) => {
-      const result = handlers.delete_result ?? { error: null }
       resolve(result)
       return Promise.resolve(result)
     },
+    configurable: true,
   })
 
   return {
-    from: vi.fn().mockImplementation(() => {
-      const callCount = { value: 0 }
-      return {
-        select: vi.fn().mockImplementation(() => {
-          callCount.value++
-          return selectBuilder
-        }),
-        delete: vi.fn().mockReturnValue(deleteBuilder),
-      }
-    }),
+    from: vi.fn().mockReturnValue(builder),
   } as unknown as SupabaseClient
 }
 
@@ -56,20 +28,15 @@ const userBookId = '550e8400-e29b-41d4-a716-446655440000'
 
 describe('deleteUserBook', () => {
   it('正常に削除して成功メッセージを返す', async () => {
-    const supabase = createMockSupabase({
-      select_result: { data: { id: userBookId }, error: null },
-      delete_result: { error: null },
-    })
+    const supabase = createMockSupabase({ error: null, count: 1 })
 
     const result = await deleteUserBook(supabase, userId, userBookId)
 
     expect(result).toEqual({ message: 'Deleted' })
   })
 
-  it('存在しないレコー��の場合 not_found エラーを返す', async () => {
-    const supabase = createMockSupabase({
-      select_result: { data: null, error: { message: 'not found' } },
-    })
+  it('存在しないレコードの場合 not_found エラーを返す（count: 0）', async () => {
+    const supabase = createMockSupabase({ error: null, count: 0 })
 
     const result = await deleteUserBook(supabase, userId, userBookId)
 
@@ -77,11 +44,10 @@ describe('deleteUserBook', () => {
   })
 
   it('DELETE エラー時に throw する', async () => {
-    const supabase = createMockSupabase({
-      select_result: { data: { id: userBookId }, error: null },
-      delete_result: { error: { message: 'DB error' } },
-    })
+    const supabase = createMockSupabase({ error: { message: 'DB error' }, count: null })
 
-    await expect(deleteUserBook(supabase, userId, userBookId)).rejects.toThrow()
+    await expect(deleteUserBook(supabase, userId, userBookId)).rejects.toThrow(
+      'user_books DELETE failed',
+    )
   })
 })

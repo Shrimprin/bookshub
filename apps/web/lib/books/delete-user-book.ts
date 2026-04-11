@@ -7,26 +7,17 @@ export async function deleteUserBook(
   userId: string,
   userBookId: string,
 ): Promise<DeleteUserBookResult> {
-  // Step 1: 対象レコード確認
-  const { data: existing, error: selectError } = await supabase
+  const { error, count } = await supabase
     .from('user_books')
-    .select('id')
+    .delete({ count: 'exact' })
     .eq('id', userBookId)
     .eq('user_id', userId)
-    .single()
 
-  if (selectError || !existing) {
+  if (error) throw new Error(`user_books DELETE failed: ${error.message}`)
+
+  if (count === 0) {
     return { error: 'not_found', message: '指定されたレコードが見つかりません' }
   }
-
-  // Step 2: 削除
-  const { error: deleteError } = await supabase
-    .from('user_books')
-    .delete()
-    .eq('id', userBookId)
-    .eq('user_id', userId)
-
-  if (deleteError) throw new Error(`user_books DELETE failed: ${deleteError.message}`)
 
   return { message: 'Deleted' }
 }

@@ -6,23 +6,21 @@ import { registerBook } from '@/lib/books/register-book'
 
 export const runtime = 'edge'
 
+async function authenticate(request: Request) {
+  const authHeader = request.headers.get('authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (!token) return null
+  return createClientFromToken(token)
+}
+
 export async function GET(request: Request) {
   try {
     // 1. Bearer トークン認証
-    const authHeader = request.headers.get('authorization')
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (!token) {
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'Missing Bearer token' },
-        { status: 401 },
-      )
-    }
-
-    const authResult = await createClientFromToken(token)
+    const authResult = await authenticate(request)
     if (!authResult) {
       return NextResponse.json(
-        { error: 'unauthorized', message: 'Invalid or expired token' },
+        { error: 'unauthorized', message: 'Missing or invalid Bearer token' },
         { status: 401 },
       )
     }
@@ -38,6 +36,7 @@ export async function GET(request: Request) {
 
     const parsed = getBooksQuerySchema.safeParse(rawQuery)
     if (!parsed.success) {
+      console.error('[GET /api/books] Validation failed:', parsed.error.issues)
       return NextResponse.json(
         { error: 'validation_error', message: 'Invalid query parameters' },
         { status: 400 },
@@ -60,20 +59,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     // 1. Bearer トークン認証
-    const authHeader = request.headers.get('authorization')
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (!token) {
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'Missing Bearer token' },
-        { status: 401 },
-      )
-    }
-
-    const authResult = await createClientFromToken(token)
+    const authResult = await authenticate(request)
     if (!authResult) {
       return NextResponse.json(
-        { error: 'unauthorized', message: 'Invalid or expired token' },
+        { error: 'unauthorized', message: 'Missing or invalid Bearer token' },
         { status: 401 },
       )
     }
@@ -94,6 +83,7 @@ export async function POST(request: Request) {
     // 3. Zod バリデーション
     const parsed = registerBookSchema.safeParse(body)
     if (!parsed.success) {
+      console.error('[POST /api/books] Validation failed:', parsed.error.issues)
       return NextResponse.json(
         { error: 'validation_error', message: 'Request body validation failed' },
         { status: 400 },

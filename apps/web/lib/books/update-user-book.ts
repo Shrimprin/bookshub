@@ -26,33 +26,27 @@ export async function updateUserBook(
   userBookId: string,
   data: UpdateUserBook,
 ): Promise<UpdateUserBookResult> {
-  // Step 1: 対象レコード確認
-  const { data: existing, error: selectError } = await supabase
+  // UPDATE + SELECT を 1 往復で実行。RLS + 明示的 user_id フィルタで二重防御。
+  const {
+    data: updated,
+    error,
+    count,
+  } = await supabase
     .from('user_books')
+    .update({ store: data.store }, { count: 'exact' })
+    .eq('id', userBookId)
+    .eq('user_id', userId)
     .select(
       'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, created_at)',
     )
-    .eq('id', userBookId)
-    .eq('user_id', userId)
     .single()
 
-  if (selectError || !existing) {
+  if (error || count === 0 || !updated) {
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`user_books UPDATE failed: ${error.message}`)
+    }
     return { error: 'not_found', message: '指定されたレコードが見つかりません' }
   }
-
-  // Step 2: store を更新
-  const { data: updated, error: updateError } = await supabase
-    .from('user_books')
-    .update({ store: data.store })
-    .eq('id', userBookId)
-    .eq('user_id', userId)
-    .select(
-      'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, created_at)',
-    )
-    .single()
-
-  if (updateError) throw new Error(`user_books UPDATE failed: ${updateError.message}`)
-  if (!updated) throw new Error('user_books UPDATE returned no data')
 
   const row = updated as unknown as UserBookWithBooks
 

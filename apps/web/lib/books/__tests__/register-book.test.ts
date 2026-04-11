@@ -67,6 +67,10 @@ const mockBookRow = {
   title: 'ワンピース',
   author: '尾田栄一郎',
   volume_number: 107,
+  thumbnail_url: null,
+  isbn: null,
+  published_at: null,
+  is_adult: false,
 }
 
 // --- Tests ---

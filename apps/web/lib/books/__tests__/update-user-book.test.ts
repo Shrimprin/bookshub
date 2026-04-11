@@ -3,63 +3,30 @@ import { updateUserBook } from '../update-user-book'
 
 // --- Mock helpers ---
 
-function createMockSupabase(handlers: {
-  select_result?: {
-    data: Record<string, unknown>[] | null
-    error: { message: string } | null
-  }
-  update_result?: {
-    data: Record<string, unknown>[] | null
-    error: { message: string; code?: string } | null
-  }
+function createMockSupabase(result: {
+  data: Record<string, unknown> | null
+  error: { message: string; code?: string } | null
+  count: number | null
 }) {
-  const selectBuilder = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn().mockReturnValue(
-      Promise.resolve(
-        handlers.select_result ?? {
-          data: null,
-          error: { message: 'not found', code: 'PGRST116' },
-        },
-      ),
-    ),
-  }
-
-  const updateBuilder = {
+  const builder = {
     update: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
-    single: vi
-      .fn()
-      .mockReturnValue(Promise.resolve(handlers.update_result ?? { data: null, error: null })),
+    single: vi.fn().mockReturnValue(Promise.resolve(result)),
   }
 
   return {
-    from: vi.fn().mockImplementation(() => {
-      // First call is SELECT (checking existence), second is UPDATE
-      const callCount = { value: 0 }
-      const handler = {
-        select: vi.fn().mockImplementation(() => {
-          callCount.value++
-          if (callCount.value === 1) return selectBuilder
-          return updateBuilder
-        }),
-        update: vi.fn().mockReturnValue(updateBuilder),
-      }
-      return handler
-    }),
-  } as unknown as SupabaseClient
+    from: vi.fn().mockReturnValue(builder),
+    _builder: builder,
+  } as unknown as SupabaseClient & { _builder: typeof builder }
 }
 
 const userId = 'user-uuid-123'
 const userBookId = '550e8400-e29b-41d4-a716-446655440000'
 
-const existingRecord = {
+const updatedRecord = {
   id: userBookId,
-  user_id: userId,
-  book_id: 'book-1',
-  store: 'kindle',
+  store: 'dmm',
   created_at: '2024-01-01T00:00:00Z',
   books: {
     id: 'book-1',
@@ -78,24 +45,39 @@ const existingRecord = {
 
 describe('updateUserBook', () => {
   it('正常に store を更新して結果を返す', async () => {
-    const updatedRecord = { ...existingRecord, store: 'dmm' }
     const supabase = createMockSupabase({
-      select_result: { data: existingRecord, error: null },
-      update_result: { data: updatedRecord, error: null },
+      data: updatedRecord,
+      error: null,
+      count: 1,
     })
 
     const result = await updateUserBook(supabase, userId, userBookId, { store: 'dmm' })
 
     expect(result).toHaveProperty('store', 'dmm')
+    expect(result).toHaveProperty('title', 'ワンピース')
   })
 
   it('存在しないレコードの場合 not_found エラーを返す', async () => {
     const supabase = createMockSupabase({
-      select_result: { data: null, error: { message: 'not found' } },
+      data: null,
+      error: { message: 'not found', code: 'PGRST116' },
+      count: 0,
     })
 
     const result = await updateUserBook(supabase, userId, userBookId, { store: 'dmm' })
 
     expect(result).toHaveProperty('error', 'not_found')
+  })
+
+  it('UPDATE が DB エラーで失敗した場合 throw する', async () => {
+    const supabase = createMockSupabase({
+      data: null,
+      error: { message: 'DB error', code: '42501' },
+      count: null,
+    })
+
+    await expect(updateUserBook(supabase, userId, userBookId, { store: 'dmm' })).rejects.toThrow(
+      'user_books UPDATE failed',
+    )
   })
 })

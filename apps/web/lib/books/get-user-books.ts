@@ -47,13 +47,13 @@ export async function getUserBooks(
   }
 
   if (query.isAdult !== undefined) {
-    qb = qb.eq('is_adult', query.isAdult)
+    qb = qb.eq('books.is_adult', query.isAdult)
   }
 
   const offset = (query.page - 1) * query.limit
   qb = qb.range(offset, offset + query.limit - 1)
   qb = qb.order('title', { referencedTable: 'books' })
-  qb = qb.order('volume_number', { referencedTable: 'books' })
+  qb = qb.order('volume_number', { referencedTable: 'books', nullsFirst: false })
 
   const { data, count, error } = await qb
 
