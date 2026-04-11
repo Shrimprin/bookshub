@@ -6,21 +6,21 @@ export interface Book {
   id: string
   title: string
   author: string
+  volumeNumber?: number
   thumbnailUrl?: string
+  isbn?: string
+  publishedAt?: string
+  isAdult: boolean
 }
 
 export interface NewBook {
   title: string
   author: string
+  volumeNumber?: number
   thumbnailUrl?: string
-}
-
-export interface BookVolume {
-  id: string
-  bookId: string
-  volumeNumber: number
   isbn?: string
   publishedAt?: string
+  isAdult?: boolean
 }
 
 export interface UserBook {
@@ -28,7 +28,6 @@ export interface UserBook {
   userId: string
   bookId: string
   store: Store
-  maxVolumeOwned: number
   createdAt: string
   updatedAt: string
 }

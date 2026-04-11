@@ -139,3 +139,17 @@ SUPABASE_SERVICE_ROLE_KEY=
 RAKUTEN_APP_ID=
 GOOGLE_BOOKS_API_KEY=
 ```
+
+---
+
+## 7. データベーススキーマ
+
+詳細なテーブル定義、制約、RLS ポリシー、トリガーについては **[DB_SCHEMA.md](./DB_SCHEMA.md)** を参照してください。
+
+### 概要
+
+- **profiles**: Supabase Auth と 1:1 対応のユーザープロフィール
+- **books**: 全ユーザー共有の書籍マスタ（1 レコード = 1 巻）
+- **user_books**: ユーザーの所持情報（巻 × ストア単位）
+
+各テーブルは Row Level Security で保護され、ユーザーは自分のデータのみアクセス可能です。
