@@ -25,6 +25,12 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  // Bearer トークン付きリクエストは Cookie 認証をスキップし、Route Handler に委譲する
+  const hasBearerToken = request.headers.get('authorization')?.startsWith('Bearer ')
+  if (hasBearerToken) {
+    return NextResponse.next({ request })
+  }
+
   // CRITICAL: getSession() はサーバーサイドで信頼不可。必ず getUser() を使うこと
   const {
     data: { user },
