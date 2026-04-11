@@ -32,13 +32,23 @@ CREATE TABLE public.books (
   isbn          text,
   published_at  date,
   is_adult      boolean     NOT NULL DEFAULT false,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT books_title_author_volume_unique UNIQUE (title, author, volume_number)
+  created_at    timestamptz NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE  public.books               IS '書籍マスタ（全ユーザー共有）。1 レコードが 1 冊（巻）を表す。';
-COMMENT ON COLUMN public.books.volume_number IS '巻数。単巻・一話完結は NULL。UNIQUE 制約では NULL は重複とみなされない。';
+COMMENT ON COLUMN public.books.volume_number IS '巻数。単巻・一話完結は NULL。部分ユニークインデックスで NULL 同士の重複を防ぐ。';
 COMMENT ON COLUMN public.books.is_adult      IS '成人向けコンテンツフラグ。true の場合は本棚を分離して表示する。';
+
+-- NULL 同士は UNIQUE 制約で衝突しないため部分インデックスで対応
+-- 単巻作品（volume_number IS NULL）: title + author で一意
+CREATE UNIQUE INDEX books_single_volume_unique
+  ON public.books (title, author)
+  WHERE volume_number IS NULL;
+
+-- 複数巻作品（volume_number IS NOT NULL）: title + author + volume_number で一意
+CREATE UNIQUE INDEX books_multi_volume_unique
+  ON public.books (title, author, volume_number)
+  WHERE volume_number IS NOT NULL;
 
 -- ============================================================
 -- Step 3: 新 user_books テーブル（max_volume_owned を削除）
