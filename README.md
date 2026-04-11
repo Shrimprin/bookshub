@@ -96,3 +96,4 @@ pnpm format:check  # フォーマットチェックのみ
 - [`docs/mvp.md`](docs/mvp.md) — MVP仕様
 - [`docs/tech_stach.md`](docs/tech_stach.md) — 技術スタック定義書
 - [`docs/architecture.md`](docs/architecture.md) — アーキテクチャ定義書
+- [`docs/DB_SCHEMA.md`](docs/DB_SCHEMA.md) — データベーススキーマ定義（テーブル・制約・RLS）

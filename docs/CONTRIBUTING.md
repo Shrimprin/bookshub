@@ -15,12 +15,30 @@
 pnpm install
 ```
 
-### 環境変数
+### 環境変数セットアップ
+
+Supabase と 書籍情報 API の認証情報が必要です。
 
 ```bash
 cp .env.example apps/web/.env.local
 # .env.local を編集して各値を設定
 ```
+
+詳細は下記の「[環境変数リファレンス](#環境変数リファレンス)」を参照してください。
+
+#### Supabase キーの取得
+
+1. [Supabase ダッシュボード](https://supabase.com/dashboard) にログイン
+2. プロジェクト「bookshub」を選択
+3. **Settings** → **API** で以下を確認：
+   - `NEXT_PUBLIC_SUPABASE_URL`: Project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: anon public キー
+4. **Service role secret** は `.env.local` の `SUPABASE_SERVICE_ROLE_KEY` に設定（サーバーサイドのみで使用）
+
+#### 書籍情報 API（どちらか一方）
+
+- **Google Books API**: [Google Cloud Console](https://console.cloud.google.com/) で API キーを生成
+- **楽天ブックス API**: [楽天デベロッパーサイト](https://webservice.rakuten.co.jp/) でアプリ ID を取得
 
 ## コマンドリファレンス（ルート）
 
