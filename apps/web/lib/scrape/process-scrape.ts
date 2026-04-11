@@ -1,21 +1,11 @@
 import type { ScrapeBook } from '@bookhub/shared'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ScrapeResponse } from '@bookhub/shared'
-
-interface BookRow {
-  id: string
-  title: string
-  author: string
-  volume_number: number | null
-}
+import { normalizeText, findExistingBook, insertBook } from '@/lib/books/book-repository'
 
 interface UserBookRow {
   book_id: string
   store: string
-}
-
-function normalizeText(text: string): string {
-  return text.trim().normalize('NFC')
 }
 
 function deduplicateBooks(books: ScrapeBook[]): ScrapeBook[] {
@@ -26,61 +16,6 @@ function deduplicateBooks(books: ScrapeBook[]): ScrapeBook[] {
     seen.add(key)
     return true
   })
-}
-
-async function findExistingBook(
-  supabase: SupabaseClient,
-  title: string,
-  author: string,
-  volumeNumber: number | undefined,
-): Promise<BookRow | null> {
-  let query = supabase
-    .from('books')
-    .select('id, title, author, volume_number')
-    .eq('title', title)
-    .eq('author', author)
-
-  if (volumeNumber === undefined) {
-    query = query.is('volume_number', null)
-  } else {
-    query = query.eq('volume_number', volumeNumber)
-  }
-
-  const { data, error } = await query
-  if (error) throw new Error(`books SELECT failed: ${error.message}`)
-  return data && data.length > 0 ? (data[0] as BookRow) : null
-}
-
-async function insertBook(supabase: SupabaseClient, book: ScrapeBook): Promise<BookRow> {
-  const { data, error } = await supabase
-    .from('books')
-    .insert({
-      title: normalizeText(book.title),
-      author: normalizeText(book.author),
-      volume_number: book.volumeNumber ?? null,
-      thumbnail_url: book.thumbnailUrl ?? null,
-      isbn: book.isbn ?? null,
-      is_adult: book.isAdult ?? false,
-    })
-    .select('id, title, author, volume_number')
-
-  if (error) {
-    // 競合（部分ユニークインデックス）の場合は既存レコードを取得
-    if (error.code === '23505') {
-      const existing = await findExistingBook(
-        supabase,
-        normalizeText(book.title),
-        normalizeText(book.author),
-        book.volumeNumber,
-      )
-      if (existing) return existing
-    }
-    throw new Error(`books INSERT failed: ${error.message}`)
-  }
-
-  const row = data && (data as BookRow[])[0]
-  if (!row) throw new Error('books INSERT returned no data — possible RLS issue')
-  return row
 }
 
 async function getExistingUserBooks(
