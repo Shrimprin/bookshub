@@ -107,6 +107,7 @@ export async function processScrapePayload(
 ): Promise<ScrapeResponse> {
   const uniqueBooks = deduplicateBooks(books)
   const duplicates: ScrapeResponse['duplicates'] = []
+  let savedCount = 0
 
   // Step 1: 各書籍の book_id を解決（既存 or 新規 INSERT）
   const resolvedBooks: { book: ScrapeBook; bookId: string }[] = []
@@ -134,6 +135,7 @@ export async function processScrapePayload(
   // Step 3: 重複検知 + user_books upsert
   for (const { book, bookId } of resolvedBooks) {
     const existingStores = existingByBookId.get(bookId) ?? []
+    const alreadyOwnedInSameStore = existingStores.includes(book.store)
     const otherStores = existingStores.filter((s) => s !== book.store)
 
     if (otherStores.length > 0) {
@@ -153,10 +155,12 @@ export async function processScrapePayload(
       { onConflict: 'user_id,book_id,store' },
     )
     if (upsertError) throw new Error(`user_books UPSERT failed: ${upsertError.message}`)
+
+    if (!alreadyOwnedInSameStore) savedCount += 1
   }
 
   return {
-    savedCount: resolvedBooks.length,
+    savedCount,
     duplicateCount: duplicates.length,
     duplicates,
   }

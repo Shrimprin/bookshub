@@ -268,7 +268,8 @@ describe('processScrapePayload', () => {
 
       const result = await processScrapePayload(supabase, userId, [singleBook])
 
-      expect(result.savedCount).toBe(1)
+      // 同一ストアで既に所持しているため savedCount は 0（upsert は no-op）
+      expect(result.savedCount).toBe(0)
       expect(result.duplicateCount).toBe(0)
       expect(result.duplicates).toEqual([])
     })

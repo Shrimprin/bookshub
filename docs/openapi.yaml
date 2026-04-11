@@ -29,6 +29,9 @@ tags:
   - name: scrape
     description: Chrome 拡張機能からのスクレイピングデータ受信
 
+security:
+  - bearerAuth: []
+
 paths:
   /api/scrape:
     post:
@@ -286,6 +289,8 @@ components:
           items:
             $ref: '#/components/schemas/Store'
           minItems: 1
+          maxItems: 3
+          uniqueItems: true
           description: 既に所持しているストアの一覧
           example:
             - dmm

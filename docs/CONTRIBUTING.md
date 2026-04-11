@@ -138,7 +138,7 @@ Chrome 拡張機能がスクレイピングした書籍データを Supabase に
 
 Bearer トークン（Supabase の ID トークン）が必須。Authorization ヘッダーで指定します。
 
-```
+```text
 Authorization: Bearer <SUPABASE_ID_TOKEN>
 ```
 
