@@ -59,6 +59,9 @@ function createMockRequest(pathname: string) {
       getAll: () => Array.from(cookieStore.entries()).map(([name, value]) => ({ name, value })),
       set: (name: string, value: string) => cookieStore.set(name, value),
     },
+    headers: {
+      get: () => null,
+    },
     nextUrl: {
       pathname,
       clone: () => new URL(url),
@@ -241,6 +244,64 @@ describe('updateSession', () => {
 
       const responseCookies = res.cookies.getAll()
       expect(responseCookies.some((c) => c.name === 'sb-token')).toBe(true)
+    })
+  })
+
+  describe('Bearer トークン付きリクエスト', () => {
+    it('Authorization: Bearer ヘッダーがある場合は Cookie 認証をスキップして通過する', async () => {
+      setupMockAuth(null)
+      const request = createMockRequest('/api/scrape')
+      request.headers = {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'authorization') return 'Bearer valid-token'
+          return null
+        },
+      } as unknown as NextRequest['headers']
+
+      const response = await updateSession(request)
+      expect((response as unknown as { _type: string })._type).toBe('next')
+    })
+
+    it('Bearer トークンなしの API リクエストは従来通り 401 を返す', async () => {
+      setupMockAuth(null)
+      const request = createMockRequest('/api/scrape')
+
+      const response = await updateSession(request)
+      const res = response as unknown as { _type: string; _status: number }
+      expect(res._type).toBe('json')
+      expect(res._status).toBe(401)
+    })
+
+    it('API 以外のパスでは Bearer トークンがあっても Cookie 認証をスキップしない', async () => {
+      setupMockAuth(null)
+      const request = createMockRequest('/bookshelf')
+      request.headers = {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'authorization') return 'Bearer valid-token'
+          return null
+        },
+      } as unknown as NextRequest['headers']
+
+      const response = await updateSession(request)
+      const res = response as unknown as { _type: string; _url: string }
+      expect(res._type).toBe('redirect')
+      expect(res._url).toContain('/login')
+    })
+
+    it('BEARER_AUTH_PATHS 外の API パスでは Bearer があっても Cookie 認証をスキップしない', async () => {
+      setupMockAuth(null)
+      const request = createMockRequest('/api/other')
+      request.headers = {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'authorization') return 'Bearer valid-token'
+          return null
+        },
+      } as unknown as NextRequest['headers']
+
+      const response = await updateSession(request)
+      const res = response as unknown as { _type: string; _status: number }
+      expect(res._type).toBe('json')
+      expect(res._status).toBe(401)
     })
   })
 

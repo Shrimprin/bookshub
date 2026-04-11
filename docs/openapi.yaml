@@ -1,0 +1,339 @@
+openapi: 3.1.0
+info:
+  title: BookHub API
+  description: |
+    BookHub の Web API 仕様。Chrome 拡張機能からスクレイピングデータを受信・保存するエンドポイントを提供します。
+
+    ## 認証
+
+    ほとんどのエンドポイントは **Supabase の Bearer トークン**（ID トークン）による認証が必要です。
+    トークンは Supabase Auth から取得します。
+
+    ```
+    Authorization: Bearer <SUPABASE_ID_TOKEN>
+    ```
+
+    ## Edge Runtime
+
+    全エンドポイントは Cloudflare Pages の Edge Runtime で動作します。Node.js API の一部（`fs`, `crypto` 等）は使用不可です。
+  version: 0.1.0
+  contact:
+    name: BookHub
+servers:
+  - url: https://bookhub.pages.dev
+    description: 本番環境（Cloudflare Pages）
+  - url: http://localhost:3000
+    description: ローカル開発環境
+
+tags:
+  - name: scrape
+    description: Chrome 拡張機能からのスクレイピングデータ受信
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/scrape:
+    post:
+      summary: スクレイピングデータ送信
+      description: |
+        Chrome 拡張機能が電子書籍ストア（Kindle・DMM 等）からスクレイピングした書籍データを受信し、Supabase に保存します。
+
+        **処理の流れ:**
+        1. Bearer トークンで認証（Supabase ID トークン）
+        2. リクエストボディを Zod スキーマでバリデーション
+        3. books テーブルで重複チェック（title + author + volumeNumber の組み合わせ）
+        4. 新規書籍は `books` テーブルに INSERT
+        5. `user_books` テーブルに UPSERT（重複送信は冪等）
+        6. 異なるストアで既に所持している場合は `duplicates` に追加して通知
+
+        **注意事項:**
+        - `books` 配列は 1 件以上 500 件以下
+        - リクエスト内に同一書籍が複数含まれる場合は自動的に重複排除
+        - title / author の前後空白は自動除去（trim）
+        - レート制限は Cloudflare WAF のルールで管理
+      operationId: postScrape
+      tags:
+        - scrape
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapePayload'
+            examples:
+              single_book:
+                summary: 単一書籍（巻数あり）
+                value:
+                  books:
+                    - title: ワンピース
+                      author: 尾田栄一郎
+                      volumeNumber: 107
+                      store: kindle
+                      isAdult: false
+              single_volume:
+                summary: 単巻作品（巻数なし）
+                value:
+                  books:
+                    - title: 火花
+                      author: 又吉直樹
+                      store: kindle
+                      isAdult: false
+              adult_content:
+                summary: 成人向けコンテンツ
+                value:
+                  books:
+                    - title: テスト作品
+                      author: テスト著者
+                      store: dmm
+                      isAdult: true
+              multiple_books:
+                summary: 複数書籍
+                value:
+                  books:
+                    - title: ワンピース
+                      author: 尾田栄一郎
+                      volumeNumber: 106
+                      store: kindle
+                      isAdult: false
+                    - title: ワンピース
+                      author: 尾田栄一郎
+                      volumeNumber: 107
+                      store: kindle
+                      isAdult: false
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeResponse'
+              examples:
+                no_duplicates:
+                  summary: 重複なし
+                  value:
+                    savedCount: 2
+                    duplicateCount: 0
+                    duplicates: []
+                with_duplicates:
+                  summary: 重複あり（別ストアで既所持）
+                  value:
+                    savedCount: 1
+                    duplicateCount: 1
+                    duplicates:
+                      - title: ワンピース
+                        volumeNumber: 107
+                        existingStores:
+                          - dmm
+        '400':
+          description: リクエスト不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_json:
+                  summary: 無効な JSON
+                  value:
+                    error: invalid_json
+                    message: Request body is not valid JSON
+                validation_error:
+                  summary: バリデーション失敗
+                  value:
+                    error: validation_error
+                    message: Request body validation failed
+        '401':
+          description: 認証失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_token:
+                  summary: Authorization ヘッダーなし
+                  value:
+                    error: unauthorized
+                    message: Missing Bearer token
+                invalid_token:
+                  summary: 無効・期限切れトークン
+                  value:
+                    error: unauthorized
+                    message: Invalid or expired token
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                internal_error:
+                  value:
+                    error: internal_error
+                    message: An unexpected error occurred
+
+    options:
+      summary: CORS プリフライト
+      description: |
+        Chrome 拡張機能向けの CORS プリフライトレスポンス。
+        Chrome 拡張機能は CORS 制約を受けないため、`Access-Control-Allow-Origin` ヘッダーは返しません。
+        ブラウザからの直接アクセスを防ぐための最小限のレスポンスです。
+      operationId: optionsScrape
+      tags:
+        - scrape
+      security: []
+      responses:
+        '204':
+          description: プリフライト応答
+          headers:
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: POST, OPTIONS
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: Authorization, Content-Type
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase の ID トークン（`supabase.auth.getSession()` で取得）
+
+  schemas:
+    Store:
+      type: string
+      enum:
+        - kindle
+        - dmm
+        - other
+      description: 電子書籍ストア識別子
+      example: kindle
+
+    ScrapeBook:
+      type: object
+      required:
+        - title
+        - author
+        - store
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 書籍タイトル（前後の空白は自動除去）
+          example: ワンピース
+        author:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 著者名（前後の空白は自動除去）
+          example: 尾田栄一郎
+        volumeNumber:
+          type: integer
+          minimum: 1
+          maximum: 9999
+          description: 巻数（単巻作品の場合は省略可）
+          example: 107
+        store:
+          $ref: '#/components/schemas/Store'
+        thumbnailUrl:
+          type: string
+          format: uri
+          description: 書影 URL（https のみ許可）
+          example: https://example.com/thumbnail.jpg
+        isbn:
+          type: string
+          pattern: '^\d{10}(\d{3})?$'
+          description: ISBN-10 または ISBN-13（数字のみ）
+          example: '9784088830490'
+        isAdult:
+          type: boolean
+          default: false
+          description: 成人向けコンテンツフラグ（本棚での表示制御に使用）
+          example: false
+
+    ScrapePayload:
+      type: object
+      required:
+        - books
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScrapeBook'
+          minItems: 1
+          maxItems: 500
+          description: 送信する書籍データのリスト
+
+    ScrapeDuplicate:
+      type: object
+      required:
+        - title
+        - existingStores
+      properties:
+        title:
+          type: string
+          description: 重複が検知された書籍のタイトル
+          example: ワンピース
+        volumeNumber:
+          type: integer
+          description: 巻数（単巻作品の場合は省略）
+          example: 107
+        existingStores:
+          type: array
+          items:
+            $ref: '#/components/schemas/Store'
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          description: 既に所持しているストアの一覧
+          example:
+            - dmm
+
+    ScrapeResponse:
+      type: object
+      required:
+        - savedCount
+        - duplicateCount
+        - duplicates
+      properties:
+        savedCount:
+          type: integer
+          minimum: 0
+          description: 新規に保存された書籍数（既存の再送信も含む）
+          example: 2
+        duplicateCount:
+          type: integer
+          minimum: 0
+          description: 異なるストアで既に所持していた書籍数（二度買い防止アラート対象）
+          example: 1
+        duplicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScrapeDuplicate'
+          description: 重複が検知された書籍の詳細リスト
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          enum:
+            - unauthorized
+            - invalid_json
+            - validation_error
+            - internal_error
+          description: エラーコード（機械的なハンドリング用）
+          example: unauthorized
+        message:
+          type: string
+          description: 人間が読めるエラー説明
+          example: Missing Bearer token

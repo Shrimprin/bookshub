@@ -25,14 +25,23 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  const { pathname } = request.nextUrl
+  const isApiPath = pathname.startsWith('/api/')
+
+  // Chrome 拡張機能専用 API: Bearer トークン認証は Route Handler 側で行うため、ミドルウェアの Cookie 認証をスキップ
+  // 新しい Bearer 認証 API を追加する場合はここにパスを追加すること
+  const BEARER_AUTH_PATHS = ['/api/scrape']
+  const hasBearerToken = request.headers.get('authorization')?.startsWith('Bearer ')
+  if (hasBearerToken && BEARER_AUTH_PATHS.includes(pathname)) {
+    return NextResponse.next({ request })
+  }
+
   // CRITICAL: getSession() はサーバーサイドで信頼不可。必ず getUser() を使うこと
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
   const isPublicPath = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/auth/')
-  const isApiPath = pathname.startsWith('/api/')
 
   // 未認証 + 保護対象ルート
   if (!user && !isPublicPath) {

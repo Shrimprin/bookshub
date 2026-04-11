@@ -11,6 +11,7 @@ const fullBook = {
   volumeNumber: 107,
   thumbnailUrl: 'https://example.com/cover.jpg',
   isbn: '9784088835099',
+  isAdult: false,
 }
 
 // --- storeSchema ---
@@ -165,6 +166,31 @@ describe('scrapeBookSchema', () => {
 
     it('文字を含む ISBN を拒否する', () => {
       const result = scrapeBookSchema.safeParse({ ...validBook, isbn: '123456789X' })
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe('isAdult', () => {
+    it('true を受け入れる', () => {
+      const result = scrapeBookSchema.safeParse({ ...validBook, isAdult: true })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.isAdult).toBe(true)
+    })
+
+    it('false を受け入れる', () => {
+      const result = scrapeBookSchema.safeParse({ ...validBook, isAdult: false })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.isAdult).toBe(false)
+    })
+
+    it('省略時は false がデフォルト', () => {
+      const result = scrapeBookSchema.safeParse(validBook)
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.isAdult).toBe(false)
+    })
+
+    it('文字列を拒否する', () => {
+      const result = scrapeBookSchema.safeParse({ ...validBook, isAdult: 'true' })
       expect(result.success).toBe(false)
     })
   })

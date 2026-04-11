@@ -12,6 +12,7 @@ export const scrapeBookSchema = z.object({
     .string()
     .regex(/^\d{10}(\d{3})?$/, 'ISBN は 10 桁または 13 桁の数字である必要があります')
     .optional(),
+  isAdult: z.boolean().optional().default(false),
 })
 
 export const scrapePayloadSchema = z.object({

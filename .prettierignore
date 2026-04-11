@@ -7,3 +7,4 @@ build
 pnpm-lock.yaml
 .claude
 ARCH_REVIEW_issue4.md
+TODO_*.md
