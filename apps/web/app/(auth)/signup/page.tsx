@@ -1,9 +1,5 @@
-import { LoginForm } from '@/components/auth/login-form'
+import { redirect } from 'next/navigation'
 
 export default function SignupPage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <LoginForm />
-    </main>
-  )
+  redirect('/login')
 }

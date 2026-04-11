@@ -37,18 +37,24 @@ export async function updateSession(request: NextRequest) {
   // 未認証 + 保護対象ルート
   if (!user && !isPublicPath) {
     if (isApiPath) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
+      return response
     }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    const response = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
+    return response
   }
 
   // 認証済みユーザーが /login or /signup にアクセスした場合は bookshelf へ
   if (user && (pathname === '/login' || pathname === '/signup')) {
     const url = request.nextUrl.clone()
     url.pathname = '/bookshelf'
-    return NextResponse.redirect(url)
+    const response = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
+    return response
   }
 
   return supabaseResponse
