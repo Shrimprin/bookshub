@@ -28,11 +28,15 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isApiPath = pathname.startsWith('/api/')
 
-  // Chrome 拡張機能専用 API: Bearer トークン認証は Route Handler 側で行うため、ミドルウェアの Cookie 認証をスキップ
+  // Bearer トークン認証 API: Route Handler 側で認証するため、ミドルウェアの Cookie 認証をスキップ
   // 新しい Bearer 認証 API を追加する場合はここにパスを追加すること
-  const BEARER_AUTH_PATHS = ['/api/scrape']
+  // TODO: 本番デプロイ前に Cloudflare WAF でエンドポイント毎のレート制限を設定すること
+  const BEARER_AUTH_PATHS = ['/api/scrape', '/api/books']
   const hasBearerToken = request.headers.get('authorization')?.startsWith('Bearer ')
-  if (hasBearerToken && BEARER_AUTH_PATHS.includes(pathname)) {
+  if (
+    hasBearerToken &&
+    BEARER_AUTH_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'))
+  ) {
     return NextResponse.next({ request })
   }
 

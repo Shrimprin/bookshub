@@ -28,6 +28,8 @@ servers:
 tags:
   - name: scrape
     description: Chrome 拡張機能からのスクレイピングデータ受信
+  - name: books
+    description: 蔵書の CRUD 操作（Web アプリ用）
 
 security:
   - bearerAuth: []
@@ -196,6 +198,249 @@ paths:
                 type: string
                 example: Authorization, Content-Type
 
+  /api/books:
+    get:
+      summary: 蔵書一覧取得
+      description: |
+        ログインユーザーの蔵書一覧を取得します。タイトル/著者名での検索、ストアフィルタ、成人向けフィルタ、ページネーションに対応。
+      operationId: getBooks
+      tags:
+        - books
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 2
+          description: タイトルまたは著者名の部分一致検索（2文字以上）
+        - name: store
+          in: query
+          schema:
+            $ref: '#/components/schemas/Store'
+          description: ストアでフィルタ
+        - name: isAdult
+          in: query
+          schema:
+            type: string
+            enum: ['true', 'false']
+          description: 成人向けフィルタ
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: ページ番号
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: 1ページあたりの件数
+      responses:
+        '200':
+          description: 蔵書一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBooksResponse'
+              examples:
+                with_books:
+                  summary: 蔵書あり
+                  value:
+                    books:
+                      - id: 550e8400-e29b-41d4-a716-446655440000
+                        title: ワンピース
+                        author: 尾田栄一郎
+                        volumeNumber: 107
+                        thumbnailUrl: https://example.com/cover.jpg
+                        isbn: '9784088835099'
+                        publishedAt: '2024-03-04'
+                        isAdult: false
+                        createdAt: '2024-01-01T00:00:00Z'
+                        userBookId: 660e8400-e29b-41d4-a716-446655440000
+                        store: kindle
+                        userBookCreatedAt: '2024-03-04T00:00:00Z'
+                    total: 1
+                    page: 1
+                    limit: 20
+                empty:
+                  summary: 蔵書なし
+                  value:
+                    books: []
+                    total: 0
+                    page: 1
+                    limit: 20
+        '400':
+          description: クエリパラメータ不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: 書籍を手動登録
+      description: |
+        手動で書籍を登録します。books マスタへの追加（既存の場合は再利用）と user_books への INSERT を行います。
+
+        別ストアで既に所持している場合は `alreadyOwned: true` と `existingStores` で二度買い情報を返します。
+        同一ストアで既に登録済みの場合は 409 Conflict を返します。
+      operationId: registerBook
+      tags:
+        - books
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterBook'
+            examples:
+              minimal:
+                summary: 必須フィールドのみ
+                value:
+                  title: ワンピース
+                  author: 尾田栄一郎
+                  store: kindle
+              full:
+                summary: 全フィールド指定
+                value:
+                  title: ワンピース
+                  author: 尾田栄一郎
+                  volumeNumber: 107
+                  store: kindle
+                  thumbnailUrl: https://example.com/cover.jpg
+                  isbn: '9784088835099'
+                  publishedAt: '2024-03-04'
+                  isAdult: false
+      responses:
+        '201':
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterBookResponse'
+        '400':
+          description: リクエスト不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 同一ストアで既に登録済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                conflict:
+                  value:
+                    error: conflict
+                    message: この書籍は既に kindle で登録されています
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/books/{id}:
+    patch:
+      summary: 所持書籍の store を更新
+      description: |
+        user_books レコードの store を更新します。`{id}` は user_books.id（UUID）です。
+      operationId: updateUserBook
+      tags:
+        - books
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: user_books レコード ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserBook'
+            examples:
+              change_store:
+                value:
+                  store: dmm
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithStore'
+        '400':
+          description: UUID 不正またはバリデーション失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: 所持書籍を削除
+      description: |
+        user_books レコードを削除します。books マスタは削除しません（他ユーザーも参照している可能性があるため）。
+        `{id}` は user_books.id（UUID）です。
+      operationId: deleteUserBook
+      tags:
+        - books
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: user_books レコード ID
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Deleted
+        '400':
+          description: UUID 不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -318,6 +563,146 @@ components:
             $ref: '#/components/schemas/ScrapeDuplicate'
           description: 重複が検知された書籍の詳細リスト
 
+    RegisterBook:
+      type: object
+      required:
+        - title
+        - author
+        - store
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 書籍タイトル
+          example: ワンピース
+        author:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 著者名
+          example: 尾田栄一郎
+        volumeNumber:
+          type: integer
+          minimum: 1
+          maximum: 9999
+          description: 巻数（単巻作品の場合は省略可）
+          example: 107
+        store:
+          $ref: '#/components/schemas/Store'
+        thumbnailUrl:
+          type: string
+          format: uri
+          description: 書影 URL（https のみ）
+        isbn:
+          type: string
+          pattern: '^\d{10}(\d{3})?$'
+          description: ISBN-10 または ISBN-13
+        publishedAt:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: 出版日（YYYY-MM-DD）
+        isAdult:
+          type: boolean
+          default: false
+          description: 成人向けフラグ
+
+    UpdateUserBook:
+      type: object
+      required:
+        - store
+      properties:
+        store:
+          $ref: '#/components/schemas/Store'
+
+    BookWithStore:
+      type: object
+      required:
+        - id
+        - title
+        - author
+        - isAdult
+        - createdAt
+        - userBookId
+        - store
+        - userBookCreatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: books テーブルの ID
+        title:
+          type: string
+        author:
+          type: string
+        volumeNumber:
+          type: integer
+          nullable: true
+        thumbnailUrl:
+          type: string
+          nullable: true
+        isbn:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          nullable: true
+        isAdult:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        userBookId:
+          type: string
+          format: uuid
+          description: user_books テーブルの ID
+        store:
+          $ref: '#/components/schemas/Store'
+        userBookCreatedAt:
+          type: string
+          format: date-time
+
+    GetBooksResponse:
+      type: object
+      required:
+        - books
+        - total
+        - page
+        - limit
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookWithStore'
+        total:
+          type: integer
+          minimum: 0
+          description: 総件数
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+
+    RegisterBookResponse:
+      type: object
+      required:
+        - book
+        - alreadyOwned
+        - existingStores
+      properties:
+        book:
+          $ref: '#/components/schemas/BookWithStore'
+        alreadyOwned:
+          type: boolean
+          description: 別ストアで既に所持しているか
+        existingStores:
+          type: array
+          items:
+            $ref: '#/components/schemas/Store'
+          description: 既に所持しているストアの一覧（二度買い防止情報）
+
     ErrorResponse:
       type: object
       required:
@@ -330,6 +715,9 @@ components:
             - unauthorized
             - invalid_json
             - validation_error
+            - invalid_uuid
+            - not_found
+            - conflict
             - internal_error
           description: エラーコード（機械的なハンドリング用）
           example: unauthorized
@@ -337,3 +725,38 @@ components:
           type: string
           description: 人間が読めるエラー説明
           example: Missing Bearer token
+
+  responses:
+    Unauthorized:
+      description: 認証失敗
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_token:
+              value:
+                error: unauthorized
+                message: Missing Bearer token
+    NotFound:
+      description: リソースが見つからない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            not_found:
+              value:
+                error: not_found
+                message: 指定されたレコードが見つかりません
+    InternalError:
+      description: サーバーエラー
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internal_error:
+              value:
+                error: internal_error
+                message: An unexpected error occurred

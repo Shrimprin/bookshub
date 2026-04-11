@@ -9,7 +9,7 @@ const validBook = {
 const fullBook = {
   ...validBook,
   volumeNumber: 107,
-  thumbnailUrl: 'https://example.com/cover.jpg',
+  thumbnailUrl: 'https://m.media-amazon.com/images/I/cover.jpg',
   isbn: '9784088835099',
   isAdult: false,
 }
@@ -121,7 +121,7 @@ describe('scrapeBookSchema', () => {
     it('https URL を受け入れる', () => {
       const result = scrapeBookSchema.safeParse({
         ...validBook,
-        thumbnailUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://pics.dmm.co.jp/img.jpg',
       })
       expect(result.success).toBe(true)
     })
@@ -129,7 +129,7 @@ describe('scrapeBookSchema', () => {
     it('http URL を拒否する', () => {
       const result = scrapeBookSchema.safeParse({
         ...validBook,
-        thumbnailUrl: 'http://example.com/img.jpg',
+        thumbnailUrl: 'http://m.media-amazon.com/img.jpg',
       })
       expect(result.success).toBe(false)
     })
@@ -140,6 +140,22 @@ describe('scrapeBookSchema', () => {
         thumbnailUrl: 'not-a-url',
       })
       expect(result.success).toBe(false)
+    })
+
+    it('許可されていないドメインを拒否する', () => {
+      const result = scrapeBookSchema.safeParse({
+        ...validBook,
+        thumbnailUrl: 'https://evil.example.com/tracking.gif',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('Amazon ドメインを受け入れる', () => {
+      const result = scrapeBookSchema.safeParse({
+        ...validBook,
+        thumbnailUrl: 'https://m.media-amazon.com/images/I/img.jpg',
+      })
+      expect(result.success).toBe(true)
     })
   })
 
