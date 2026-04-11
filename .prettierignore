@@ -6,3 +6,4 @@ build
 *.min.js
 pnpm-lock.yaml
 .claude
+ARCH_REVIEW_issue4.md
