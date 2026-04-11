@@ -271,6 +271,22 @@ describe('updateSession', () => {
       expect(res._type).toBe('json')
       expect(res._status).toBe(401)
     })
+
+    it('API 以外のパスでは Bearer トークンがあっても Cookie 認証をスキップしない', async () => {
+      setupMockAuth(null)
+      const request = createMockRequest('/bookshelf')
+      request.headers = {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'authorization') return 'Bearer valid-token'
+          return null
+        },
+      } as unknown as NextRequest['headers']
+
+      const response = await updateSession(request)
+      const res = response as unknown as { _type: string; _url: string }
+      expect(res._type).toBe('redirect')
+      expect(res._url).toContain('/login')
+    })
   })
 
   describe('セキュリティ', () => {

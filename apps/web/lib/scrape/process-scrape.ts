@@ -78,7 +78,9 @@ async function insertBook(supabase: SupabaseClient, book: ScrapeBook): Promise<B
     throw new Error(`books INSERT failed: ${error.message}`)
   }
 
-  return (data as BookRow[])[0]
+  const row = data && (data as BookRow[])[0]
+  if (!row) throw new Error('books INSERT returned no data — possible RLS issue')
+  return row
 }
 
 async function getExistingUserBooks(
@@ -142,7 +144,7 @@ export async function processScrapePayload(
       })
     }
 
-    await supabase.from('user_books').upsert(
+    const { error: upsertError } = await supabase.from('user_books').upsert(
       {
         user_id: userId,
         book_id: bookId,
@@ -150,6 +152,7 @@ export async function processScrapePayload(
       },
       { onConflict: 'user_id,book_id,store' },
     )
+    if (upsertError) throw new Error(`user_books UPSERT failed: ${upsertError.message}`)
   }
 
   return {

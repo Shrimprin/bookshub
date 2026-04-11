@@ -25,9 +25,12 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  // Bearer トークン付きリクエストは Cookie 認証をスキップし、Route Handler に委譲する
+  const { pathname } = request.nextUrl
+  const isApiPath = pathname.startsWith('/api/')
+
+  // API ルートへの Bearer トークン付きリクエストは Cookie 認証をスキップし、Route Handler に委譲する
   const hasBearerToken = request.headers.get('authorization')?.startsWith('Bearer ')
-  if (hasBearerToken) {
+  if (isApiPath && hasBearerToken) {
     return NextResponse.next({ request })
   }
 
@@ -36,9 +39,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
   const isPublicPath = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/auth/')
-  const isApiPath = pathname.startsWith('/api/')
 
   // 未認証 + 保護対象ルート
   if (!user && !isPublicPath) {

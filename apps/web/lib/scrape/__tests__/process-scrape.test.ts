@@ -313,5 +313,37 @@ describe('processScrapePayload', () => {
 
       await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow()
     })
+
+    it('books INSERT が空データを返した場合にエラーを throw する', async () => {
+      const supabase = createMockSupabase({
+        books: {
+          select: { data: [], error: null },
+          insert: { data: [], error: null },
+        },
+      })
+
+      await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow(
+        'books INSERT returned no data',
+      )
+    })
+
+    it('user_books UPSERT 失敗時にエラーを throw する', async () => {
+      const supabase = createMockSupabase({
+        books: {
+          select: {
+            data: [{ id: 'book-1', title: 'ワンピース', author: '尾田栄一郎', volume_number: 107 }],
+            error: null,
+          },
+        },
+        user_books: {
+          select: { data: [], error: null },
+          upsert: { data: null, error: { message: 'RLS violation' } },
+        },
+      })
+
+      await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow(
+        'user_books UPSERT failed',
+      )
+    })
   })
 })

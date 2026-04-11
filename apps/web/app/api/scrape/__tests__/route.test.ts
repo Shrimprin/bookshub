@@ -14,6 +14,15 @@ import { processScrapePayload } from '@/lib/scrape/process-scrape'
 const mockUser = { id: 'user-123', email: 'test@example.com' }
 const mockSupabase = { from: vi.fn() }
 
+function setupMockAuth() {
+  vi.mocked(createClientFromToken).mockResolvedValue({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: mockSupabase as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    user: mockUser as any,
+  })
+}
+
 const validPayload = {
   books: [
     {
@@ -61,22 +70,7 @@ describe('POST /api/scrape', () => {
 
   describe('バリデーション', () => {
     beforeEach(() => {
-      vi.mocked(createClientFromToken).mockResolvedValue({
-        supabase: mockSupabase as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['supabase']
-          : never,
-        user: mockUser as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['user']
-          : never,
-      })
+      setupMockAuth()
     })
 
     it('不正な JSON で 400 を返す', async () => {
@@ -107,22 +101,7 @@ describe('POST /api/scrape', () => {
 
   describe('正常系', () => {
     beforeEach(() => {
-      vi.mocked(createClientFromToken).mockResolvedValue({
-        supabase: mockSupabase as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['supabase']
-          : never,
-        user: mockUser as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['user']
-          : never,
-      })
+      setupMockAuth()
     })
 
     it('正常なリクエストで 200 とレスポンスを返す', async () => {
@@ -161,22 +140,7 @@ describe('POST /api/scrape', () => {
 
   describe('エラーハンドリング', () => {
     beforeEach(() => {
-      vi.mocked(createClientFromToken).mockResolvedValue({
-        supabase: mockSupabase as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['supabase']
-          : never,
-        user: mockUser as unknown as Awaited<
-          ReturnType<typeof createClientFromToken>
-        > extends infer T
-          ? T extends null
-            ? never
-            : NonNullable<T>['user']
-          : never,
-      })
+      setupMockAuth()
     })
 
     it('processScrapePayload がエラーを投げた場合 500 を返す', async () => {

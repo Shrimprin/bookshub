@@ -72,7 +72,8 @@ export async function POST(request: Request) {
         'Access-Control-Allow-Origin': '*',
       },
     })
-  } catch {
+  } catch (err) {
+    console.error('[POST /api/scrape] Unexpected error:', err)
     return NextResponse.json(
       { error: 'internal_error', message: 'An unexpected error occurred' },
       { status: 500 },
