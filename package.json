@@ -9,6 +9,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .prettierignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\" --ignore-path .prettierignore",
     "fix": "pnpm -r lint --fix && pnpm format",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
     "prepare": "husky"
   },
   "devDependencies": {

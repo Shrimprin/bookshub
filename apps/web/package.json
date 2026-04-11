@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "pages:build": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare dev",
-    "deploy": "opennextjs-cloudflare deploy"
+    "deploy": "opennextjs-cloudflare deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@bookhub/shared": "workspace:*",
@@ -30,10 +33,12 @@
     "@types/node": "^22.15.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@vitest/coverage-v8": "^4.1.4",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.3",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.58.1"
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^4.1.4"
   }
 }
