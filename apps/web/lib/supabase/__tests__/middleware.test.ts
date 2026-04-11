@@ -82,6 +82,11 @@ describe('updateSession', () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
   })
 
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  })
+
   describe('未認証ユーザー', () => {
     beforeEach(() => {
       setupMockAuth(null)

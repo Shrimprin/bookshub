@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ['**/__tests__/**/*.test.ts'],
+    include: ['app/**/__tests__/**/*.test.ts', 'lib/**/__tests__/**/*.test.ts'],
     environment: 'node',
     mockReset: true,
   },
