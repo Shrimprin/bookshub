@@ -19,7 +19,7 @@ const validRegisterBook = {
 const fullRegisterBook = {
   ...validRegisterBook,
   volumeNumber: 107,
-  thumbnailUrl: 'https://example.com/cover.jpg',
+  thumbnailUrl: 'https://m.media-amazon.com/images/I/cover.jpg',
   isbn: '9784088835099',
   publishedAt: '2024-03-04',
   isAdult: false,
@@ -30,7 +30,7 @@ const validBookWithStore = {
   title: 'ワンピース',
   author: '尾田栄一郎',
   volumeNumber: 107,
-  thumbnailUrl: 'https://example.com/cover.jpg',
+  thumbnailUrl: 'https://m.media-amazon.com/images/I/cover.jpg',
   isbn: '9784088835099',
   publishedAt: '2024-03-04',
   isAdult: false,
@@ -158,7 +158,7 @@ describe('registerBookSchema', () => {
       expect(
         registerBookSchema.safeParse({
           ...validRegisterBook,
-          thumbnailUrl: 'https://example.com/img.jpg',
+          thumbnailUrl: 'https://m.media-amazon.com/images/I/img.jpg',
         }).success,
       ).toBe(true)
     })
@@ -167,9 +167,27 @@ describe('registerBookSchema', () => {
       expect(
         registerBookSchema.safeParse({
           ...validRegisterBook,
-          thumbnailUrl: 'http://example.com/img.jpg',
+          thumbnailUrl: 'http://m.media-amazon.com/img.jpg',
         }).success,
       ).toBe(false)
+    })
+
+    it('許可されていないドメインを拒否する', () => {
+      expect(
+        registerBookSchema.safeParse({
+          ...validRegisterBook,
+          thumbnailUrl: 'https://evil.example.com/tracking.gif',
+        }).success,
+      ).toBe(false)
+    })
+
+    it('DMM ドメインを受け入れる', () => {
+      expect(
+        registerBookSchema.safeParse({
+          ...validRegisterBook,
+          thumbnailUrl: 'https://pics.dmm.co.jp/mono/movie/img.jpg',
+        }).success,
+      ).toBe(true)
     })
   })
 
@@ -267,6 +285,16 @@ describe('getBooksQuerySchema', () => {
     it('1文字を拒否する（min(2) 制約）', () => {
       const result = getBooksQuerySchema.safeParse({ q: 'A' })
       expect(result.success).toBe(false)
+    })
+
+    it('201文字以上を拒否する（max(200) 制約）', () => {
+      const result = getBooksQuerySchema.safeParse({ q: 'あ'.repeat(201) })
+      expect(result.success).toBe(false)
+    })
+
+    it('200文字を受け入れる（max 境界）', () => {
+      const result = getBooksQuerySchema.safeParse({ q: 'あ'.repeat(200) })
+      expect(result.success).toBe(true)
     })
   })
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { storeSchema } from './book-schema.js'
+import { storeSchema, thumbnailUrlSchema } from './book-schema.js'
 
 // --- パスパラメータ ---
 
@@ -8,11 +8,11 @@ export const userBookIdSchema = z.string().uuid()
 // --- POST /api/books リクエスト ---
 
 export const registerBookSchema = z.object({
-  title: z.string().min(1).max(500),
-  author: z.string().min(1).max(200),
+  title: z.string().trim().min(1).max(500),
+  author: z.string().trim().min(1).max(200),
   volumeNumber: z.number().int().positive().max(9999).optional(),
   store: storeSchema,
-  thumbnailUrl: z.string().url().startsWith('https://').optional(),
+  thumbnailUrl: thumbnailUrlSchema.optional(),
   isbn: z
     .string()
     .regex(/^\d{10}(\d{3})?$/, 'ISBN は 10 桁または 13 桁の数字である必要があります')
@@ -33,7 +33,7 @@ export const updateUserBookSchema = z.object({
 // --- GET /api/books クエリパラメータ ---
 
 export const getBooksQuerySchema = z.object({
-  q: z.string().min(2).optional(),
+  q: z.string().min(2).max(200).optional(),
   store: storeSchema.optional(),
   isAdult: z
     .enum(['true', 'false'])

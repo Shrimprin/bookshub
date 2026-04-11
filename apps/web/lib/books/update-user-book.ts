@@ -41,10 +41,14 @@ export async function updateUserBook(
     )
     .single()
 
-  if (error || count === 0 || !updated) {
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`user_books UPDATE failed: ${error.message}`)
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return { error: 'not_found', message: '指定されたレコードが見つかりません' }
     }
+    throw new Error(`user_books UPDATE failed: ${error.message}`)
+  }
+
+  if (count === 0 || !updated) {
     return { error: 'not_found', message: '指定されたレコードが見つかりません' }
   }
 

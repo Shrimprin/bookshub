@@ -2,12 +2,34 @@ import { z } from 'zod'
 
 export const storeSchema = z.enum(['kindle', 'dmm', 'other'])
 
+// thumbnailUrl で許可するホスト一覧（ストア追加時にここへ追記）
+const ALLOWED_THUMBNAIL_HOSTS = [
+  'm.media-amazon.com',
+  'images-na.ssl-images-amazon.com',
+  'images-fe.ssl-images-amazon.com',
+  'pics.dmm.co.jp',
+  'p.dmm.co.jp',
+]
+
+export const thumbnailUrlSchema = z
+  .string()
+  .url()
+  .startsWith('https://')
+  .refine(
+    (url) => {
+      const hostname = url.match(/^https:\/\/([^/]+)/)?.[1]
+      if (!hostname) return false
+      return ALLOWED_THUMBNAIL_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))
+    },
+    { message: 'thumbnailUrl は許可されたドメインのみ使用可能です' },
+  )
+
 export const scrapeBookSchema = z.object({
-  title: z.string().min(1).max(500),
-  author: z.string().min(1).max(200),
+  title: z.string().trim().min(1).max(500),
+  author: z.string().trim().min(1).max(200),
   volumeNumber: z.number().int().positive().max(9999).optional(),
   store: storeSchema,
-  thumbnailUrl: z.string().url().startsWith('https://').optional(),
+  thumbnailUrl: thumbnailUrlSchema.optional(),
   isbn: z
     .string()
     .regex(/^\d{10}(\d{3})?$/, 'ISBN は 10 桁または 13 桁の数字である必要があります')
