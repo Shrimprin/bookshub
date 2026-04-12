@@ -11,7 +11,13 @@
       <h1>BookHub</h1>
       <div id="auth-status" class="status"></div>
       <div id="sync-status" class="status"></div>
-      <a id="bookshelf-link" href="#" target="_blank" rel="noopener noreferrer" class="link">本棚を開く</a>
+      <div id="scrape-progress" class="status" hidden></div>
+      <button id="reset-scrape-session" type="button" class="link" hidden>
+        進行中の同期をリセット
+      </button>
+      <a id="bookshelf-link" href="#" target="_blank" rel="noopener noreferrer" class="link"
+        >本棚を開く</a
+      >
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

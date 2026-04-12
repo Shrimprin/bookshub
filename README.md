@@ -91,9 +91,11 @@ pnpm format:check  # フォーマットチェックのみ
 
 ## ドキュメント
 
-- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — 開発環境セットアップ・コマンドリファレンス
-- [`docs/requirement_definition.md`](docs/requirement_definition.md) — 要求定義書
-- [`docs/mvp.md`](docs/mvp.md) — MVP仕様
-- [`docs/tech_stach.md`](docs/tech_stach.md) — 技術スタック定義書
-- [`docs/architecture.md`](docs/architecture.md) — アーキテクチャ定義書
-- [`docs/DB_SCHEMA.md`](docs/DB_SCHEMA.md) — データベーススキーマ定義（テーブル・制約・RLS）
+- [`docs/README.md`](docs/README.md) — ドキュメント索引・クイックナビ
+- [`docs/guides/CONTRIBUTING.md`](docs/guides/CONTRIBUTING.md) — 開発環境セットアップ・コマンドリファレンス
+- [`docs/requirements/requirement_definition.md`](docs/requirements/requirement_definition.md) — 要求定義書
+- [`docs/requirements/mvp.md`](docs/requirements/mvp.md) — MVP仕様
+- [`docs/specs/tech_stack.md`](docs/specs/tech_stack.md) — 技術スタック定義書
+- [`docs/specs/architecture.md`](docs/specs/architecture.md) — アーキテクチャ定義書
+- [`docs/specs/DB_SCHEMA.md`](docs/specs/DB_SCHEMA.md) — データベーススキーマ定義（テーブル・制約・RLS）
+- [`docs/specs/openapi.yaml`](docs/specs/openapi.yaml) — API 仕様書（OpenAPI 3.1.0）

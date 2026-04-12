@@ -89,30 +89,38 @@ cp .env.example apps/web/.env.local
 
 <!-- AUTO-GENERATED: generated from .env.example -->
 
-| 変数                            | 必須 | 説明                                              |
-| ------------------------------- | ---- | ------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Yes  | Supabase プロジェクト URL                         |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes  | Supabase 匿名キー（クライアントサイドで使用）     |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Yes  | Supabase サービスロールキー（サーバーサイドのみ） |
-| `RAKUTEN_APP_ID`                | No\* | 楽天ブックス API のアプリ ID                      |
-| `GOOGLE_BOOKS_API_KEY`          | No\* | Google Books API キー                             |
+| 変数                            | 必須   | 説明                                                                                          |
+| ------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Yes    | Supabase プロジェクト URL                                                                     |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes    | Supabase 匿名キー（クライアントサイドで使用）                                                 |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Yes    | Supabase サービスロールキー（サーバーサイドのみ）                                             |
+| `RAKUTEN_APP_ID`                | No\*   | 楽天ブックス API のアプリ ID                                                                  |
+| `GOOGLE_BOOKS_API_KEY`          | No\*   | Google Books API キー                                                                         |
+| `NEXT_PUBLIC_EXTENSION_ID`      | No\*\* | Chrome 拡張機能の ID。`chrome://extensions` で確認。未設定時はトークン送信を no-op でスキップ |
 
 \*書籍情報 API はどちらか一方が必要
+\*\*拡張機能連携を使う場合のみ必要（非秘密情報）
 
 ### Chrome 拡張機能 （apps/extension）
 
-| 変数              | 必須  | 説明                                                       |
-| ----------------- | ----- | ---------------------------------------------------------- |
-| `BOOKHUB_API_URL` | Yes\* | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる） |
+| 変数                          | 必須   | 説明                                                                                                                                     |
+| ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOKHUB_API_URL`             | Yes\*  | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる）                                                                               |
+| `CRX_PUBLIC_KEY`              | No\*\* | Extension ID 固定化用の公開鍵 (base64)。dev ビルド時のみ使用（非秘密）                                                                   |
+| `BOOKHUB_ALLOWED_WEB_ORIGINS` | No\*\* | Web アプリのオリジン（カンマ区切り）。dev は `localhost:3000` が自動設定、本番ビルドでは必須（パターン例: `https://bookhub.pages.dev/*`) |
 
 \* 開発時: `localhost:3000`、本番ビルド時: HTTPS な本番 URL（必須）
+\*\* `BOOKHUB_ALLOWED_WEB_ORIGINS` は本番ビルド（`--mode production`）時は必須。`CRX_PUBLIC_KEY` 未設定の場合、Extension ID は `chrome://extensions` でロードするたびに変わる可能性がある
 
 #### 設定方法
 
 **開発時:**
 
 ```bash
-BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
+# Extension ID を固定化したい場合は CRX_PUBLIC_KEY も設定
+CRX_PUBLIC_KEY=<base64 public key> \
+BOOKHUB_API_URL=http://localhost:3000 \
+pnpm --filter extension dev
 ```
 
 **本番ビルド時:**
@@ -122,6 +130,34 @@ BOOKHUB_API_URL=https://bookshelf.example.com pnpm --filter extension build:prod
 ```
 
 <!-- /AUTO-GENERATED -->
+
+### Chrome 拡張機能 × Web アプリ 連携のセットアップ
+
+1. `pnpm --filter extension dev` で拡張機能をビルド
+2. Chrome で `chrome://extensions` を開き、デベロッパーモード ON
+3. 「パッケージ化されていない拡張機能を読み込む」で `apps/extension/dist/` を指定
+4. 表示された Extension ID を `apps/web/.env.local` の `NEXT_PUBLIC_EXTENSION_ID` に設定
+5. （任意）`CRX_PUBLIC_KEY` を `.env` に設定して ID を固定化すると、以降の再読み込みで ID が変わらない
+6. `pnpm dev` で Web アプリを起動してログイン
+
+#### 動作確認チェックリスト
+
+- [ ] `/login` からログインできる
+- [ ] ログイン後、拡張機能のポップアップが「ログイン中」に変わる
+- [ ] Kindle 購入履歴ページ (`https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/...`) を開くとスクレイピングが成功する
+- [ ] 複数ページある場合、自動的に `?pageNumber=N` を順次遷移して全ページから書籍を収集する (Console に `page 1, page 2, ...` のログ)
+- [ ] 累積完了後、ポップアップに同期結果 (`N 冊を同期しました`) が表示される
+- [ ] 拡張機能を `chrome://extensions` で reload した後も、Web を再訪問せずに同期できる (Phase 1 の修正)
+- [ ] Web アプリでログアウトすると、ポップアップが「未ログイン」に戻る
+
+#### Kindle ページネーション動作確認 (累積セッション)
+
+- [ ] 3 ページ以上ある購入履歴で、ページ 1 を開くと自動で 2, 3, ... と進み最終ページで送信される
+- [ ] 累積中にポップアップを開くと「Kindle 同期中: ページ N まで完了 / M 冊蓄積」と表示される
+- [ ] 途中でタブを閉じる → 5 分以内に再訪問すると続きから再開される
+- [ ] 5 分以上経ってから再訪問すると、新規セッションでページ 1 から始まる
+- [ ] ポップアップの「進行中の同期をリセット」ボタンで累積セッションをクリアできる
+- [ ] AUTH_ERROR 発生時はセッションが保持され、再ログイン後にページを再訪問すると累積データが再送される
 
 ## テスト
 
@@ -161,7 +197,7 @@ pnpm test:coverage
 
 ### Chrome 拡張機能テスト
 
-拡張機能のテストでは、`chrome` グローバルオブジェクトをモック化して実行します：
+拡張機能のテストでは、`jsdom` で DOM 環境をシミュレートし、`chrome` グローバルオブジェクトをモック化して実行します：
 
 ```bash
 # 拡張機能テストの実行
@@ -176,11 +212,27 @@ pnpm --filter extension test:coverage
 
 **テスト範囲:**
 
-- Service Worker メッセージハンドリング
-- Content Script ↔ Background 通信
-- Token ライフサイクル（取得・保存・削除）
-- API エラーハンドリング（401/400/500）
-- 本棚タブリロード動作
+- **Service Worker** (`src/background/__tests__/`):
+  - メッセージハンドリング
+  - Content Script ↔ Background 通信
+  - Token ライフサイクル（取得・保存・削除）
+  - API エラーハンドリング（401/400/500）
+  - 本棚タブリロード動作
+
+- **Content Script - Kindle** (`src/content/__tests__/kindle.test.ts`):
+  - ページ判定（URL パターンマッチ）
+  - DOM スクレイピング
+  - タイムアウト処理（`waitForElement()`）
+  - Service Worker への送信
+
+- **Parser** (`src/content/shared/__tests__/parser.test.ts`):
+  - 巻数抽出（複数パターン: 「第1巻」「1巻」「(1)」「Vol.1」等）
+  - シリーズタイトル正規化（巻数表記・修飾語の除去）
+  - URL バリデーション
+
+- **Sender** (`src/content/shared/__tests__/sender.test.ts`):
+  - Service Worker へのメッセージ送信
+  - エラーハンドリング
 
 ## API エンドポイントリファレンス
 
@@ -406,6 +458,22 @@ Authorization: Bearer <token>
 
 ## Extension 開発ガイド
 
+### Content Script の実装パターン
+
+各ストアの Content Script は以下のパターンで実装：
+
+```
+1. ページ判定（isKindleContentPage()）
+   ↓
+2. DOM 待機（waitForElement()）
+   ↓
+3. スクレイピング（scrapeKindleBooks()）
+   ↓
+4. 正規化（parseBooks()）
+   ↓
+5. Service Worker へ送信（sendScrapedBooks()）
+```
+
 ### メッセージ型定義
 
 Content Script と Service Worker の通信は `src/types/messages.ts` で定義された型セーフなメッセージを使用します：
@@ -420,6 +488,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true // 非同期レスポンス有効化
 })
 ```
+
+### Parser（src/content/shared/parser.ts）
+
+生データから共通の `ScrapeBook[]` 型に正規化：
+
+```typescript
+// 巻数抽出
+extractVolumeNumber('ワンピース 107巻') // → 107
+
+// シリーズタイトル正規化
+extractSeriesTitle('ワンピース 107巻 特装版') // → 'ワンピース'
+
+// 一括パース
+const books = parseBooks(rawBooks, 'kindle')
+```
+
+対応パターン：
+
+- 「第1巻」「1巻」「(1)」「(01)」「Vol.1」「vol 1」
+- 修飾語除去：「特装版」「限定版」「通常版」
 
 ### ストレージ操作
 

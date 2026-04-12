@@ -19,8 +19,12 @@ export const thumbnailUrlSchema = z
   .startsWith('https://')
   .refine(
     (url) => {
-      const hostname = url.match(/^https:\/\/([^/]+)/)?.[1]
-      if (!hostname) return false
+      let hostname: string
+      try {
+        hostname = new URL(url).hostname
+      } catch {
+        return false
+      }
       return ALLOWED_THUMBNAIL_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))
     },
     { message: 'thumbnailUrl は許可されたドメインのみ使用可能です' },
