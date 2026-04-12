@@ -25,6 +25,10 @@ vi.stubGlobal('chrome', {
 describe('popup main', () => {
   let renderAuthStatus: (el: HTMLElement | null) => Promise<void>
   let renderSyncStatus: (el: HTMLElement | null) => Promise<void>
+  let renderScrapeProgress: (
+    progressEl: HTMLElement | null,
+    resetBtn: HTMLElement | null,
+  ) => Promise<void>
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -33,6 +37,7 @@ describe('popup main', () => {
     const mod = await import('../main.js')
     renderAuthStatus = mod.renderAuthStatus
     renderSyncStatus = mod.renderSyncStatus
+    renderScrapeProgress = mod.renderScrapeProgress
   })
 
   describe('renderAuthStatus', () => {
@@ -109,6 +114,45 @@ describe('popup main', () => {
       await renderSyncStatus(el)
       expect(el.textContent).toContain('3冊を同期しました')
       expect(el.textContent).toContain('重複: 2冊')
+    })
+  })
+
+  describe('renderScrapeProgress', () => {
+    it('セッションがない場合は要素を hidden にする', async () => {
+      const progressEl = document.createElement('div')
+      const resetBtn = document.createElement('button')
+      progressEl.hidden = false
+      resetBtn.hidden = false
+
+      await renderScrapeProgress(progressEl, resetBtn)
+
+      expect(progressEl.hidden).toBe(true)
+      expect(resetBtn.hidden).toBe(true)
+    })
+
+    it('セッションがある場合は進捗を表示する', async () => {
+      mockStorageData.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 3,
+        books: [{ title: 'a' }, { title: 'b' }],
+        seenKeys: [],
+      })
+      const progressEl = document.createElement('div')
+      const resetBtn = document.createElement('button')
+      progressEl.hidden = true
+      resetBtn.hidden = true
+
+      await renderScrapeProgress(progressEl, resetBtn)
+
+      expect(progressEl.hidden).toBe(false)
+      expect(progressEl.textContent).toContain('ページ 3')
+      expect(progressEl.textContent).toContain('2 冊蓄積')
+      expect(resetBtn.hidden).toBe(false)
+    })
+
+    it('要素が null でも例外を投げない', async () => {
+      await expect(renderScrapeProgress(null, null)).resolves.toBeUndefined()
     })
   })
 })
