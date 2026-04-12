@@ -18,6 +18,7 @@ vi.stubGlobal('chrome', {
     id: EXTENSION_ID,
     onInstalled: { addListener: vi.fn() },
     onMessage: { addListener: vi.fn() },
+    onMessageExternal: { addListener: vi.fn() },
     lastError: null,
   },
   storage: {
@@ -36,7 +37,12 @@ vi.stubGlobal('chrome', {
         }
         return Promise.resolve()
       }),
-      remove: vi.fn(),
+      remove: vi.fn((keys: string[]) => {
+        for (const key of keys) {
+          mockStorageData.delete(key)
+        }
+        return Promise.resolve()
+      }),
     },
   },
   tabs: {
@@ -59,9 +65,14 @@ vi.stubGlobal('fetch', mockFetch)
 // --- __API_BASE_URL__ モック ---
 
 vi.stubGlobal('__API_BASE_URL__', 'http://localhost:3000')
+vi.stubGlobal('__ALLOWED_EXTERNAL_ORIGINS__', ['http://localhost:3000'])
 
 describe('background', () => {
   let handleMessage: (message: unknown, sender: chrome.runtime.MessageSender) => Promise<unknown>
+  let handleExternalMessage: (
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
+  ) => Promise<unknown>
 
   const testBooks: ScrapeBook[] = [
     {
@@ -84,6 +95,7 @@ describe('background', () => {
     // onMessage.addListener に渡された関数を取り出す
     const bg = await import('../index.js')
     handleMessage = bg.handleMessage
+    handleExternalMessage = bg.handleExternalMessage
   })
 
   describe('handleMessage', () => {
@@ -393,6 +405,115 @@ describe('background', () => {
             code: 'UNKNOWN_ERROR',
           }),
         )
+      })
+    })
+  })
+
+  describe('handleExternalMessage', () => {
+    const allowedSender: chrome.runtime.MessageSender = {
+      origin: 'http://localhost:3000',
+      url: 'http://localhost:3000/bookshelf',
+      id: 'some-external-id',
+    }
+
+    describe('origin 検証', () => {
+      beforeEach(() => {
+        mockStorageData.delete('bookhub_access_token')
+      })
+
+      it('許可されていない origin からのメッセージを拒否する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: 'my-token' },
+          { origin: 'https://evil.example.com', id: 'evil-id' },
+        )
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
+      })
+
+      it('origin が undefined の場合は拒否する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: 'my-token' },
+          { id: 'some-id' },
+        )
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
+      })
+    })
+
+    describe('メッセージバリデーション', () => {
+      beforeEach(() => {
+        mockStorageData.delete('bookhub_access_token')
+      })
+
+      it('不明な type のメッセージを拒否する', async () => {
+        const result = await handleExternalMessage({ type: 'UNKNOWN' }, allowedSender)
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+      })
+
+      it('空文字列の token を拒否する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: '' },
+          allowedSender,
+        )
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
+      })
+
+      it('token が文字列でない場合は拒否する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: 12345 },
+          allowedSender,
+        )
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+      })
+
+      it('8192 文字を超える token を拒否する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: 'a'.repeat(8193) },
+          allowedSender,
+        )
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+      })
+
+      it('null を拒否する', async () => {
+        const result = await handleExternalMessage(null, allowedSender)
+        expect(result).toEqual({ success: false, error: expect.any(String) })
+      })
+    })
+
+    describe('SET_ACCESS_TOKEN', () => {
+      beforeEach(() => {
+        mockStorageData.delete('bookhub_access_token')
+      })
+
+      it('許可 origin から SET_ACCESS_TOKEN で storage にトークンを保存する', async () => {
+        const result = await handleExternalMessage(
+          { type: 'SET_ACCESS_TOKEN', token: 'new-access-token' },
+          allowedSender,
+        )
+        expect(result).toEqual({ success: true })
+        expect(mockStorageData.get('bookhub_access_token')).toBe('new-access-token')
+      })
+
+      it('既存のトークンを上書きする', async () => {
+        mockStorageData.set('bookhub_access_token', 'old-token')
+        await handleExternalMessage({ type: 'SET_ACCESS_TOKEN', token: 'new-token' }, allowedSender)
+        expect(mockStorageData.get('bookhub_access_token')).toBe('new-token')
+      })
+    })
+
+    describe('CLEAR_ACCESS_TOKEN', () => {
+      it('許可 origin から CLEAR_ACCESS_TOKEN で storage からトークンを削除する', async () => {
+        mockStorageData.set('bookhub_access_token', 'some-token')
+        const result = await handleExternalMessage({ type: 'CLEAR_ACCESS_TOKEN' }, allowedSender)
+        expect(result).toEqual({ success: true })
+        expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
+      })
+
+      it('トークンがない状態でも成功を返す', async () => {
+        mockStorageData.delete('bookhub_access_token')
+        const result = await handleExternalMessage({ type: 'CLEAR_ACCESS_TOKEN' }, allowedSender)
+        expect(result).toEqual({ success: true })
       })
     })
   })

@@ -1,7 +1,12 @@
-import { scrapePayloadSchema } from '@bookhub/shared'
-import type { ScrapeResponse } from '@bookhub/shared'
+import { scrapePayloadSchema, externalExtensionMessageSchema } from '@bookhub/shared'
+import type { ScrapeResponse, ExternalMessageResponse } from '@bookhub/shared'
 import type { ExtensionMessage, MessageResponse, SyncResult } from '../types/messages.js'
-import { getAccessToken, setLastSyncResult } from '../utils/storage.js'
+import {
+  getAccessToken,
+  setAccessToken,
+  removeAccessToken,
+  setLastSyncResult,
+} from '../utils/storage.js'
 
 // --- Service Worker 初期化 ---
 
@@ -44,11 +49,54 @@ export async function handleMessage(
   }
 }
 
+// --- 外部メッセージハンドラ (Web アプリからのトークン受け渡し) ---
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return false
+  return __ALLOWED_EXTERNAL_ORIGINS__.includes(origin)
+}
+
+export async function handleExternalMessage(
+  message: unknown,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExternalMessageResponse> {
+  // 1. origin 検証 - 許可リストに載っていないオリジンからのメッセージは全て拒否
+  if (!isAllowedOrigin(sender.origin)) {
+    return { success: false, error: '許可されていない送信元です' }
+  }
+
+  // 2. メッセージ形式バリデーション (Zod)
+  const parsed = externalExtensionMessageSchema.safeParse(message)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: `不正なメッセージ形式: ${parsed.error.issues[0]?.message ?? 'unknown'}`,
+    }
+  }
+
+  // 3. type 分岐
+  switch (parsed.data.type) {
+    case 'SET_ACCESS_TOKEN':
+      await setAccessToken(parsed.data.token)
+      return { success: true }
+    case 'CLEAR_ACCESS_TOKEN':
+      await removeAccessToken()
+      return { success: true }
+  }
+}
+
 // --- リスナーをトップレベルで登録 ---
 
 chrome.runtime.onMessage.addListener(
   (message: unknown, sender: chrome.runtime.MessageSender, sendResponse) => {
     handleMessage(message, sender).then(sendResponse)
+    return true // 非同期レスポンスを有効化
+  },
+)
+
+chrome.runtime.onMessageExternal.addListener(
+  (message: unknown, sender: chrome.runtime.MessageSender, sendResponse) => {
+    handleExternalMessage(message, sender).then(sendResponse)
     return true // 非同期レスポンスを有効化
   },
 )
