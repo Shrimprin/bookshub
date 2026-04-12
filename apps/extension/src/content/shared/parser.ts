@@ -15,9 +15,14 @@ function normalizeDigits(text: string): string {
   )
 }
 
+// 巻数抽出パターン。`\d+` で完全な数字シーケンスをキャプチャしてから
+// 後段で 1-9999 (shared schema の制約) に合致するか検証する。
+// `\d{1,4}` のような桁数制限を正規表現側に置くと、`12345巻` の 2345 のように
+// 部分マッチを誤って採用するリスクがあるため避ける。
 const VOLUME_PATTERNS: RegExp[] = [
   /\s*第(\d+)巻/,
   /\s*(\d+)巻/,
+  // paren パターンのみ \d{1,3} で年号 (2024) や特典コード (12345) を排除
   /[（(](\d{1,3})[）)]/,
   /\s+Vol\.(\d+)/i,
   /\s+vol\s+(\d+)/i,
@@ -26,12 +31,19 @@ const VOLUME_PATTERNS: RegExp[] = [
   /.{3,}\s+(\d{1,3})$/,
 ]
 
+const MIN_VOLUME = 1
+const MAX_VOLUME = 9999
+
 export function extractVolumeNumber(title: string): number | undefined {
   const normalized = normalizeDigits(title)
   for (const pattern of VOLUME_PATTERNS) {
     const match = normalized.match(pattern)
     if (match?.[1]) {
-      return Number(match[1])
+      const volume = Number.parseInt(match[1], 10)
+      // shared schema の制約 (1..9999) に合致しない値は弾く
+      if (Number.isInteger(volume) && volume >= MIN_VOLUME && volume <= MAX_VOLUME) {
+        return volume
+      }
     }
   }
   return undefined

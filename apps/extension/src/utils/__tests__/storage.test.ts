@@ -205,6 +205,74 @@ describe('storage', () => {
       const result = await storage.getScrapeSession()
       expect(result).toBeNull()
     })
+
+    it('books に store が欠けた要素があると null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [{ title: 'ok', author: 'ok', isAdult: false }],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
+
+    it('books に isAdult が欠けた要素があると null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [{ title: 'ok', author: 'ok', store: 'kindle' }],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
+
+    it('books の volumeNumber が範囲外なら null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [
+          { title: 'ok', author: 'ok', store: 'kindle', isAdult: false, volumeNumber: 100000 },
+        ],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
+
+    it('startedAt が NaN なら null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: NaN,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
+
+    it('lastPageScraped が負数なら null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: -1,
+        books: [],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
+
+    it('originalUrl が空文字なら null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: '',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: [],
+      })
+      expect(await storage.getScrapeSession()).toBeNull()
+    })
   })
 
   describe('setScrapeSession', () => {

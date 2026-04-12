@@ -48,6 +48,13 @@ describe('extractVolumeNumber', () => {
   ])('全角数字 "%s" → %i', (title, expected) => {
     expect(extractVolumeNumber(title)).toBe(expected)
   })
+
+  it.each([['シリーズ 12345巻'], ['Series Vol.99999'], ['series 10000']])(
+    'shared schema の上限 (9999) を超える巻数 "%s" は undefined',
+    (title) => {
+      expect(extractVolumeNumber(title)).toBeUndefined()
+    },
+  )
 })
 
 describe('extractSeriesTitle', () => {

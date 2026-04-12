@@ -37,21 +37,44 @@ export async function setLastSyncResult(syncResult: SyncResult): Promise<void> {
 // books / seenKeys が undefined のまま使われると mergeBooks や Set コンストラクタで
 // 静かに壊れるため、構造チェックで弾いて null 扱いにする。
 //
-// 配列要素の型もチェックする: DevTools 等で storage が改ざんされた場合に
-// books に null や非オブジェクトが混入していると、後段の mergeBooks で
-// `${book.title}|...` が "undefined|..." となり dedup が破綻する。
+// 配列要素は ScrapeBook の必須フィールド (title/author/store/isAdult) と
+// volumeNumber の範囲 (1-9999, integer) まで検証する。
+// startedAt/lastPageScraped は NaN/Infinity/負数を弾くため Number.isFinite/isInteger を使う。
 function isScrapeBookLike(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
   const b = value as Record<string, unknown>
-  return typeof b.title === 'string' && typeof b.author === 'string'
+  if (typeof b.title !== 'string' || b.title.trim().length === 0) return false
+  if (typeof b.author !== 'string' || b.author.trim().length === 0) return false
+  if (typeof b.store !== 'string') return false
+  if (typeof b.isAdult !== 'boolean') return false
+  if (b.volumeNumber !== undefined) {
+    if (
+      typeof b.volumeNumber !== 'number' ||
+      !Number.isInteger(b.volumeNumber) ||
+      b.volumeNumber < 1 ||
+      b.volumeNumber > 9999
+    ) {
+      return false
+    }
+  }
+  if (b.thumbnailUrl !== undefined && typeof b.thumbnailUrl !== 'string') return false
+  return true
 }
 
 function isScrapeSession(value: unknown): value is ScrapeSession {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
-  if (typeof v.startedAt !== 'number') return false
-  if (typeof v.originalUrl !== 'string') return false
-  if (typeof v.lastPageScraped !== 'number') return false
+  if (typeof v.startedAt !== 'number' || !Number.isFinite(v.startedAt) || v.startedAt < 0) {
+    return false
+  }
+  if (typeof v.originalUrl !== 'string' || v.originalUrl.length === 0) return false
+  if (
+    typeof v.lastPageScraped !== 'number' ||
+    !Number.isInteger(v.lastPageScraped) ||
+    v.lastPageScraped < 0
+  ) {
+    return false
+  }
   if (!Array.isArray(v.books) || !v.books.every(isScrapeBookLike)) return false
   if (!Array.isArray(v.seenKeys) || !v.seenKeys.every((k) => typeof k === 'string')) return false
   return true

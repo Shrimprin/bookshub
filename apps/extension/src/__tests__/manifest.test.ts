@@ -61,8 +61,9 @@ describe('manifest.config', () => {
 
     it('API ベース URL を含む (Chrome の CORS バイパスのため)', () => {
       const manifest = resolveManifest('development')
-      // BOOKHUB_API_URL 未設定時のデフォルトは http://localhost:3000/*
-      const apiHost = (process.env.BOOKHUB_API_URL || 'http://localhost:3000') + '/*'
+      // manifest.config.ts の正規化と一致させる: 末尾スラッシュを除去してから '/*' を追加
+      const baseUrl = process.env.BOOKHUB_API_URL || 'http://localhost:3000'
+      const apiHost = baseUrl.replace(/\/$/, '') + '/*'
       expect(manifest.host_permissions).toContain(apiHost)
     })
   })

@@ -36,9 +36,22 @@ export default defineConfig(async ({ mode }) => {
     }
   }
 
-  // externally_connectable で許可するオリジン一覧
-  // この値は Background Service Worker の origin 検証にも使われる
-  const allowedExternalOrigins = [apiUrl]
+  // externally_connectable で許可するオリジン一覧。
+  // manifest.config.ts の externally_connectable.matches と Background SW の
+  // isAllowedOrigin で使われる __ALLOWED_EXTERNAL_ORIGINS__ を同じ source of truth
+  // (BOOKHUB_ALLOWED_WEB_ORIGINS) から導出する。Web app と API origin が異なる
+  // 構成 (web=pages.dev, api=workers.dev 等) でも整合する。
+  // dev では BOOKHUB_ALLOWED_WEB_ORIGINS が未設定でも動くように localhost を fallback。
+  const webOriginPatterns = (process.env.BOOKHUB_ALLOWED_WEB_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+  const sourcePatterns =
+    webOriginPatterns.length > 0 ? webOriginPatterns : ['http://localhost:3000/*']
+  // match pattern (https://example.com/*) を origin (https://example.com) に正規化
+  const allowedExternalOrigins = sourcePatterns.map((p) =>
+    p.replace(/\/\*$/, '').replace(/\/$/, ''),
+  )
 
   // loadEnv() の結果を process.env に反映した後で manifest.config を評価する。
   // トップレベル import では CRX_PUBLIC_KEY 未注入時に評価されてしまうため dynamic import を使う。

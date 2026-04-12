@@ -136,8 +136,8 @@ describe('popup main', () => {
         originalUrl: 'https://www.amazon.co.jp/foo',
         lastPageScraped: 3,
         books: [
-          { title: 'a', author: 'x' },
-          { title: 'b', author: 'y' },
+          { title: 'a', author: 'x', store: 'kindle', isAdult: false },
+          { title: 'b', author: 'y', store: 'kindle', isAdult: false },
         ],
         seenKeys: [],
       })

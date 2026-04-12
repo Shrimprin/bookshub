@@ -178,7 +178,7 @@ sequenceDiagram
 | アクセストークンなし   | `AUTH_ERROR`       | Background が即座に拒否 |
 | API が 401             | `AUTH_ERROR`       | 「再ログインが必要」    |
 | Zod バリデーション失敗 | `VALIDATION_ERROR` | 詳細メッセージ          |
-| API が 400             | `VALIDATION_ERROR` | サーバー側エラー        |
+| API が 400             | `VALIDATION_ERROR` | リクエスト不正          |
 | API が 5xx             | `API_ERROR`        | サーバーエラー          |
 | `fetch` 失敗           | `NETWORK_ERROR`    | ネットワークエラー      |
 
