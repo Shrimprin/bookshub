@@ -2,7 +2,8 @@ import type { RawBookData } from './shared/parser.js'
 import { parseBooks } from './shared/parser.js'
 import { sendScrapedBooks } from './shared/sender.js'
 
-const KINDLE_CONTENT_URL_PATTERN = 'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/'
+const KINDLE_CONTENT_URL_PATTERN =
+  'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/'
 
 const SELECTORS = {
   bookItem: '.ContentItem_container__heading',

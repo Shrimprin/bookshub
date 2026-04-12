@@ -81,10 +81,16 @@ describe('kindle', () => {
       expect(kindleModule.isKindleContentPage()).toBe(true)
     })
 
-    it('contentlist 配下の別パスでも true を返す', () => {
+    it('contentlist/booksAll 配下の別ソートでも true を返す', () => {
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/titleAsc/'
+      expect(kindleModule.isKindleContentPage()).toBe(true)
+    })
+
+    it('contentlist 配下でも booksAll 以外は false を返す', () => {
       window.location.href =
         'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/pdocs/dateDsc/'
-      expect(kindleModule.isKindleContentPage()).toBe(true)
+      expect(kindleModule.isKindleContentPage()).toBe(false)
     })
 
     it('Amazon のトップページで false を返す', () => {

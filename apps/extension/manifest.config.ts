@@ -19,7 +19,7 @@ export default defineManifest({
   content_scripts: [
     {
       js: ['src/content/kindle.ts'],
-      matches: ['https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/*'],
+      matches: ['https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/*'],
       run_at: 'document_idle',
     },
     {
