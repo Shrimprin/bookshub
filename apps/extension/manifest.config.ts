@@ -7,8 +7,6 @@ export default defineManifest({
   description: '漫画ヘビーユーザー向け本棚管理・二度買い防止サービス',
   // activeTab は現状不使用だが、将来的に手動スクレイピングトリガーで必要になる可能性あり
   permissions: ['storage', 'tabs'],
-  // TODO(#10, #11): 各ストアのスクレイピング対象 URL が確定したら、購入履歴ページのみに絞る
-  // 例: https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/*
   host_permissions: ['https://www.amazon.co.jp/*', 'https://book.dmm.com/*'],
   action: {
     default_popup: 'src/popup/index.html',
@@ -21,7 +19,7 @@ export default defineManifest({
   content_scripts: [
     {
       js: ['src/content/kindle.ts'],
-      matches: ['https://www.amazon.co.jp/*'],
+      matches: ['https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/*'],
       run_at: 'document_idle',
     },
     {
