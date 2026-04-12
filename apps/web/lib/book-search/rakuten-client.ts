@@ -34,12 +34,12 @@ export async function searchRakutenBooks(
       throw new Error(`Rakuten Books API error: HTTP ${response.status}`)
     }
 
-    const contentLength = response.headers.get('content-length')
-    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+    const text = await response.text()
+    if (text.length > MAX_RESPONSE_BYTES) {
       throw new Error('Rakuten Books API response too large')
     }
 
-    const data = (await response.json()) as RakutenBooksResponse
+    const data = JSON.parse(text) as RakutenBooksResponse
 
     return {
       totalCount: data.count,
@@ -58,10 +58,37 @@ export async function searchRakutenBooks(
 }
 
 /**
- * 楽天の salesDate（例: "2024年03月04日"）を "YYYY-MM-DD" 形式に変換する。
+ * 楽天の salesDate を正規化する。
+ *
+ * 対応フォーマット:
+ *  - "2024年03月04日" / "2024年3月4日" → "2024-03-04"
+ *  - "2024年03月04日頃" → "2024-03-04"
+ *  - "2024年03月" / "2024年3月上旬" → "2024-03"
+ *  - "2024年" → "2024"
  */
 function parseSalesDate(salesDate: string): string | undefined {
-  const match = salesDate.match(/(\d{4})年(\d{2})月(\d{2})日/)
-  if (!match) return undefined
-  return `${match[1]}-${match[2]}-${match[3]}`
+  if (!salesDate) return undefined
+
+  // YYYY年M月D日（1〜2桁の月日、末尾の "頃" 等は無視）
+  const fullMatch = salesDate.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
+  if (fullMatch) {
+    const month = fullMatch[2].padStart(2, '0')
+    const day = fullMatch[3].padStart(2, '0')
+    return `${fullMatch[1]}-${month}-${day}`
+  }
+
+  // YYYY年M月（日なし、"上旬"/"中旬"/"下旬"/"以降" 等は無視）
+  const yearMonthMatch = salesDate.match(/(\d{4})年(\d{1,2})月/)
+  if (yearMonthMatch) {
+    const month = yearMonthMatch[2].padStart(2, '0')
+    return `${yearMonthMatch[1]}-${month}`
+  }
+
+  // YYYY年
+  const yearMatch = salesDate.match(/(\d{4})年/)
+  if (yearMatch) {
+    return yearMatch[1]
+  }
+
+  return undefined
 }

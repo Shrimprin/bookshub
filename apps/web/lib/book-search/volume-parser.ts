@@ -24,8 +24,8 @@ export function extractVolumeNumber(title: string): number | undefined {
     /第(\d+)巻/,
     // 「N巻」
     /(\d+)巻/,
-    // Vol.N / vol.N
-    /[Vv]ol\.(\d+)/,
+    // Vol.N / vol.N / VOL. N
+    /\bvol\.\s*(\d+)/i,
     // 末尾のスペース+数字（タイトルの一部として数字で始まるものは除外）
     /\s(\d+)\s*$/,
   ]

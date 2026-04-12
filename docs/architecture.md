@@ -45,7 +45,7 @@ hons/
 │   │   │   │   ├── search/         # 書籍検索・登録
 │   │   │   │   └── settings/       # ユーザー設定
 │   │   │   ├── api/                # Route Handlers（各ファイルに export const runtime = 'edge'）
-│   │   │   │   ├── books/          # 蔵書CRUD
+│   │   │   │   ├── books/          # 蔵書CRUD・書籍検索（楽天 / Google Books）
 │   │   │   │   └── scrape/         # Chrome拡張機能からのデータ受信・重複検知
 │   │   │   ├── layout.tsx
 │   │   │   └── page.tsx

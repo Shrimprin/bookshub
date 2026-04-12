@@ -9,11 +9,12 @@ afterEach(() => {
 })
 
 function mockFetch(response: unknown, status = 200) {
+  const text = JSON.stringify(response)
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
     headers: new Headers(),
-    json: () => Promise.resolve(response),
+    text: () => Promise.resolve(text),
   })
 }
 
@@ -65,6 +66,134 @@ describe('searchRakutenBooks', () => {
       expect(url.searchParams.get('page')).toBe('2')
     })
 
+    it('1桁の月日を正しくパースする（例: 2024年3月4日）', async () => {
+      stubRakutenEnv()
+      const response = {
+        count: 1,
+        page: 1,
+        first: 1,
+        last: 1,
+        hits: 1,
+        pageCount: 1,
+        Items: [
+          {
+            Item: {
+              title: 'テスト書籍',
+              author: 'テスト著者',
+              isbn: '9784000000000',
+              largeImageUrl: '',
+              mediumImageUrl: '',
+              salesDate: '2024年3月4日',
+              itemPrice: 500,
+              publisherName: 'テスト出版',
+              booksGenreId: '001',
+            },
+          },
+        ],
+      }
+      mockFetch(response)
+
+      const result = await searchRakutenBooks({ query: 'テスト' })
+
+      expect(result.items[0]?.publishedAt).toBe('2024-03-04')
+    })
+
+    it('年月のみの日付を正しくパースする（例: 2024年03月）', async () => {
+      stubRakutenEnv()
+      const response = {
+        count: 1,
+        page: 1,
+        first: 1,
+        last: 1,
+        hits: 1,
+        pageCount: 1,
+        Items: [
+          {
+            Item: {
+              title: 'テスト書籍',
+              author: 'テスト著者',
+              isbn: '9784000000000',
+              largeImageUrl: '',
+              mediumImageUrl: '',
+              salesDate: '2024年03月中旬',
+              itemPrice: 500,
+              publisherName: 'テスト出版',
+              booksGenreId: '001',
+            },
+          },
+        ],
+      }
+      mockFetch(response)
+
+      const result = await searchRakutenBooks({ query: 'テスト' })
+
+      expect(result.items[0]?.publishedAt).toBe('2024-03')
+    })
+
+    it('年のみの日付を正しくパースする（例: 2024年）', async () => {
+      stubRakutenEnv()
+      const response = {
+        count: 1,
+        page: 1,
+        first: 1,
+        last: 1,
+        hits: 1,
+        pageCount: 1,
+        Items: [
+          {
+            Item: {
+              title: 'テスト書籍',
+              author: 'テスト著者',
+              isbn: '9784000000000',
+              largeImageUrl: '',
+              mediumImageUrl: '',
+              salesDate: '2024年',
+              itemPrice: 500,
+              publisherName: 'テスト出版',
+              booksGenreId: '001',
+            },
+          },
+        ],
+      }
+      mockFetch(response)
+
+      const result = await searchRakutenBooks({ query: 'テスト' })
+
+      expect(result.items[0]?.publishedAt).toBe('2024')
+    })
+
+    it('「頃」付きの日付を正しくパースする', async () => {
+      stubRakutenEnv()
+      const response = {
+        count: 1,
+        page: 1,
+        first: 1,
+        last: 1,
+        hits: 1,
+        pageCount: 1,
+        Items: [
+          {
+            Item: {
+              title: 'テスト書籍',
+              author: 'テスト著者',
+              isbn: '9784000000000',
+              largeImageUrl: '',
+              mediumImageUrl: '',
+              salesDate: '2024年03月04日頃',
+              itemPrice: 500,
+              publisherName: 'テスト出版',
+              booksGenreId: '001',
+            },
+          },
+        ],
+      }
+      mockFetch(response)
+
+      const result = await searchRakutenBooks({ query: 'テスト' })
+
+      expect(result.items[0]?.publishedAt).toBe('2024-03-04')
+    })
+
     it('空の検索結果を正しく処理する', async () => {
       stubRakutenEnv()
       mockFetch({ count: 0, page: 1, first: 0, last: 0, hits: 0, pageCount: 0, Items: [] })
@@ -111,8 +240,8 @@ describe('searchRakutenBooks', () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-length': '2000000' }),
-        json: () => Promise.resolve({}),
+        headers: new Headers(),
+        text: () => Promise.resolve('x'.repeat(1_100_000)),
       })
 
       await expect(searchRakutenBooks({ query: 'test' })).rejects.toThrow('response too large')

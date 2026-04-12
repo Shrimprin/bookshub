@@ -43,6 +43,14 @@ describe('extractVolumeNumber', () => {
     it('vol.12', () => {
       expect(extractVolumeNumber('チェンソーマン vol.12')).toBe(12)
     })
+
+    it('VOL.3（大文字）', () => {
+      expect(extractVolumeNumber('テスト漫画 VOL.3')).toBe(3)
+    })
+
+    it('Vol. 8（スペース付き）', () => {
+      expect(extractVolumeNumber('テスト漫画 Vol. 8')).toBe(8)
+    })
   })
 
   describe('巻数なし', () => {

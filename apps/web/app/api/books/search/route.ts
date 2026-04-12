@@ -20,11 +20,11 @@ function parseSearchQuery(searchParams: URLSearchParams) {
   }
 
   const rawPage = searchParams.get('page')
-  const page = rawPage ? Number(rawPage) : 1
+  const page = rawPage === null ? 1 : Number(rawPage)
   if (!Number.isInteger(page) || page < 1 || page > 1000) return null
 
   const rawLimit = searchParams.get('limit')
-  const limit = rawLimit ? Number(rawLimit) : 10
+  const limit = rawLimit === null ? 10 : Number(rawLimit)
   if (!Number.isInteger(limit) || limit < 1 || limit > 30) return null
 
   return { q, page, limit }

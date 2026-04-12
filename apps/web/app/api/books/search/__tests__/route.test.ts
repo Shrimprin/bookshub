@@ -80,6 +80,18 @@ describe('GET /api/books/search', () => {
       expect(response.status).toBe(400)
     })
 
+    it('page が空文字で 400 を返す', async () => {
+      const request = createGetRequest({ q: 'test', page: '' }, 'valid-token')
+      const response = await GET(request)
+      expect(response.status).toBe(400)
+    })
+
+    it('limit が空文字で 400 を返す', async () => {
+      const request = createGetRequest({ q: 'test', limit: '' }, 'valid-token')
+      const response = await GET(request)
+      expect(response.status).toBe(400)
+    })
+
     it('page が小数で 400 を返す', async () => {
       const request = createGetRequest({ q: 'test', page: '1.5' }, 'valid-token')
       const response = await GET(request)

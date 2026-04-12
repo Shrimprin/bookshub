@@ -41,12 +41,12 @@ export async function searchGoogleBooks(params: BookSearchParams): Promise<BookS
       throw new Error(`Google Books API error: HTTP ${response.status}`)
     }
 
-    const contentLength = response.headers.get('content-length')
-    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+    const text = await response.text()
+    if (text.length > MAX_RESPONSE_BYTES) {
       throw new Error('Google Books API response too large')
     }
 
-    const data = (await response.json()) as GoogleBooksResponse
+    const data = JSON.parse(text) as GoogleBooksResponse
 
     return {
       totalCount: data.totalItems,

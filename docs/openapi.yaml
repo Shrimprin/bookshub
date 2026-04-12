@@ -277,6 +277,17 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: 書籍検索サービス一時利用不可（APIキー未設定）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                service_unavailable:
+                  value:
+                    error: service_unavailable
+                    message: Book search is temporarily unavailable
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -860,6 +871,7 @@ components:
             - invalid_uuid
             - not_found
             - conflict
+            - service_unavailable
             - internal_error
           description: エラーコード（機械的なハンドリング用）
           example: unauthorized

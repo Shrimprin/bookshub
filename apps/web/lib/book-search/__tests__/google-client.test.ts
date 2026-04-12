@@ -9,11 +9,12 @@ afterEach(() => {
 })
 
 function mockFetch(response: unknown, status = 200) {
+  const text = JSON.stringify(response)
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
     headers: new Headers(),
-    json: () => Promise.resolve(response),
+    text: () => Promise.resolve(text),
   })
 }
 
@@ -126,8 +127,8 @@ describe('searchGoogleBooks', () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-length': '2000000' }),
-        json: () => Promise.resolve({}),
+        headers: new Headers(),
+        text: () => Promise.resolve('x'.repeat(1_100_000)),
       })
 
       await expect(searchGoogleBooks({ query: 'test' })).rejects.toThrow('response too large')
