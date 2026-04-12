@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
@@ -13,6 +14,7 @@ export default defineConfig({
     projects: [
       {
         extends: true,
+        plugins: [react()],
         test: {
           name: 'jsdom',
           environment: 'jsdom',
