@@ -13,28 +13,31 @@ vi.stubGlobal('chrome', {
 
 // --- DOM ヘルパー ---
 
+let nextAsinCounter = 0
+
 function createBookElement(opts: {
   title: string
   author: string
   thumbnailUrl?: string
 }): HTMLElement {
+  const asin = `B${String(nextAsinCounter++).padStart(9, '0')}`
   const container = document.createElement('div')
-  container.setAttribute('data-testid', 'content-item')
-  container.classList.add('ContentItem_container__heading')
+  container.id = `content-title-${asin}`
 
+  // タイトル: span[dir="auto"] の最初の要素 (フォールバック経路)
   const titleEl = document.createElement('span')
-  titleEl.classList.add('ContentItem_title__text')
+  titleEl.setAttribute('dir', 'auto')
   titleEl.textContent = opts.title
   container.appendChild(titleEl)
 
+  // 著者: span[dir="auto"] の 2 番目の要素
   const authorEl = document.createElement('span')
-  authorEl.classList.add('ContentItem_author__text')
+  authorEl.setAttribute('dir', 'auto')
   authorEl.textContent = opts.author
   container.appendChild(authorEl)
 
   if (opts.thumbnailUrl) {
     const img = document.createElement('img')
-    img.classList.add('ContentItem_cover__image')
     img.src = opts.thumbnailUrl
     container.appendChild(img)
   }
@@ -217,11 +220,10 @@ describe('kindle', () => {
     })
 
     it('書籍が 0 件の場合は送信しない', async () => {
-      // 書籍アイテムなしだが要素自体は存在する状態を作る
-      // main() 内の waitForElement がタイムアウトして早期 return する
-      // scrapeKindleBooks が空配列を返すケースは scrapeKindleBooks テストでカバー済み
+      // 書籍アイテム要素は存在するがタイトル・著者が空のケース。
+      // waitForElement がマッチする → scrapeKindleBooks が空配列を返す → 早期 return
       const container = document.createElement('div')
-      container.classList.add('ContentItem_container__heading')
+      container.id = 'content-title-B000000000'
       // タイトル・著者なし → scrapeKindleBooks がスキップ → 0 件
       document.body.appendChild(container)
 
