@@ -71,7 +71,7 @@ function parseSalesDate(salesDate: string): string | undefined {
 
   // YYYY年M月D日（1〜2桁の月日、末尾の "頃" 等は無視）
   const fullMatch = salesDate.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
-  if (fullMatch) {
+  if (fullMatch?.[1] && fullMatch[2] && fullMatch[3]) {
     const month = fullMatch[2].padStart(2, '0')
     const day = fullMatch[3].padStart(2, '0')
     return `${fullMatch[1]}-${month}-${day}`
@@ -79,14 +79,14 @@ function parseSalesDate(salesDate: string): string | undefined {
 
   // YYYY年M月（日なし、"上旬"/"中旬"/"下旬"/"以降" 等は無視）
   const yearMonthMatch = salesDate.match(/(\d{4})年(\d{1,2})月/)
-  if (yearMonthMatch) {
+  if (yearMonthMatch?.[1] && yearMonthMatch[2]) {
     const month = yearMonthMatch[2].padStart(2, '0')
     return `${yearMonthMatch[1]}-${month}`
   }
 
   // YYYY年
   const yearMatch = salesDate.match(/(\d{4})年/)
-  if (yearMatch) {
+  if (yearMatch?.[1]) {
     return yearMatch[1]
   }
 
