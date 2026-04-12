@@ -117,6 +117,36 @@ describe('BookshelfPage', () => {
     expect(call?.[2]).toEqual(expect.objectContaining({ page: 1, limit: 100 }))
   })
 
+  it('searchParams.q が空文字列のとき getUserBooks には q を渡さない', async () => {
+    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+
+    await renderPage({ q: '' })
+
+    const call = vi.mocked(getUserBooks).mock.calls[0]
+    expect(call?.[2]).not.toHaveProperty('q')
+  })
+
+  it('searchParams.q が空白のみのとき getUserBooks には q を渡さない', async () => {
+    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+
+    await renderPage({ q: '   ' })
+
+    const call = vi.mocked(getUserBooks).mock.calls[0]
+    expect(call?.[2]).not.toHaveProperty('q')
+  })
+
+  it('searchParams.q が 200 文字を超える場合は 200 文字に切り詰めて getUserBooks に渡す', async () => {
+    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+
+    const longQ = 'あ'.repeat(500)
+    await renderPage({ q: longQ })
+
+    const call = vi.mocked(getUserBooks).mock.calls[0]
+    const passedQ = (call?.[2] as { q?: string }).q
+    expect(passedQ?.length).toBe(200)
+    expect(passedQ).toBe('あ'.repeat(200))
+  })
+
   it('searchParams.q 2文字以上 & 結果 0 件のとき no-results を表示する', async () => {
     vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
 
