@@ -1,0 +1,49 @@
+{
+  "count": 83,
+  "page": 1,
+  "first": 1,
+  "last": 3,
+  "hits": 3,
+  "pageCount": 28,
+  "Items": [
+    {
+      "Item": {
+        "title": "ONE PIECE 107",
+        "author": "尾田栄一郎",
+        "isbn": "9784088838625",
+        "largeImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/8625/9784088838625_1_2.jpg?_ex=200x200",
+        "mediumImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/8625/9784088838625_1_2.jpg?_ex=120x120",
+        "salesDate": "2024年03月04日",
+        "itemPrice": 528,
+        "publisherName": "集英社",
+        "booksGenreId": "001001001"
+      }
+    },
+    {
+      "Item": {
+        "title": "ONE PIECE 106",
+        "author": "尾田栄一郎",
+        "isbn": "9784088836645",
+        "largeImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/6645/9784088836645_1_2.jpg?_ex=200x200",
+        "mediumImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/6645/9784088836645_1_2.jpg?_ex=120x120",
+        "salesDate": "2023年10月04日",
+        "itemPrice": 528,
+        "publisherName": "集英社",
+        "booksGenreId": "001001001"
+      }
+    },
+    {
+      "Item": {
+        "title": "ONE PIECE 総集編 THE BEST（集英社マンガ総集編シリーズ）",
+        "author": "尾田栄一郎",
+        "isbn": "9784088928272",
+        "largeImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/8272/9784088928272_1_2.jpg?_ex=200x200",
+        "mediumImageUrl": "https://thumbnail.image.rakuten.co.jp/@0_mall/book/cabinet/8272/9784088928272_1_2.jpg?_ex=120x120",
+        "salesDate": "2023年07月04日",
+        "itemPrice": 1100,
+        "publisherName": "集英社",
+        "booksGenreId": "001001001"
+      }
+    }
+  ]
+}

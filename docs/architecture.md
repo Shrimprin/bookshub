@@ -45,7 +45,7 @@ hons/
 │   │   │   │   ├── search/         # 書籍検索・登録
 │   │   │   │   └── settings/       # ユーザー設定
 │   │   │   ├── api/                # Route Handlers（各ファイルに export const runtime = 'edge'）
-│   │   │   │   ├── books/          # 蔵書CRUD
+│   │   │   │   ├── books/          # 蔵書CRUD・書籍検索（楽天 / Google Books）
 │   │   │   │   └── scrape/         # Chrome拡張機能からのデータ受信・重複検知
 │   │   │   ├── layout.tsx
 │   │   │   └── page.tsx
@@ -62,7 +62,7 @@ hons/
 │   │   │   │   ├── client.ts       # ブラウザ用 (createBrowserClient)
 │   │   │   │   ├── server.ts       # Server Component / Route Handler用 (createServerClient)
 │   │   │   │   └── middleware.ts   # セッション更新用
-│   │   │   └── books-api/          # 楽天ブックスAPI / Google Books API呼び出し
+│   │   │   └── book-search/         # 楽天ブックスAPI / Google Books API 書籍検索
 │   │   ├── hooks/                  # カスタムReact Hooks
 │   │   ├── middleware.ts           # ルート保護・セッションリフレッシュ
 │   │   ├── next.config.ts
