@@ -6,7 +6,7 @@ const mockStorageData = new Map<string, unknown>()
 
 vi.stubGlobal('chrome', {
   storage: {
-    session: {
+    local: {
       get: vi.fn((keys: string[]) => {
         const result: Record<string, unknown> = {}
         for (const key of keys) {

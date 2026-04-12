@@ -6,23 +6,23 @@ const STORAGE_KEYS = {
 } as const
 
 export async function getAccessToken(): Promise<string | null> {
-  const result = await chrome.storage.session.get([STORAGE_KEYS.ACCESS_TOKEN])
+  const result = await chrome.storage.local.get([STORAGE_KEYS.ACCESS_TOKEN])
   return (result[STORAGE_KEYS.ACCESS_TOKEN] as string | undefined) ?? null
 }
 
 export async function setAccessToken(token: string): Promise<void> {
-  await chrome.storage.session.set({ [STORAGE_KEYS.ACCESS_TOKEN]: token })
+  await chrome.storage.local.set({ [STORAGE_KEYS.ACCESS_TOKEN]: token })
 }
 
 export async function removeAccessToken(): Promise<void> {
-  await chrome.storage.session.remove([STORAGE_KEYS.ACCESS_TOKEN])
+  await chrome.storage.local.remove([STORAGE_KEYS.ACCESS_TOKEN])
 }
 
 export async function getLastSyncResult(): Promise<SyncResult | null> {
-  const result = await chrome.storage.session.get([STORAGE_KEYS.LAST_SYNC_RESULT])
+  const result = await chrome.storage.local.get([STORAGE_KEYS.LAST_SYNC_RESULT])
   return (result[STORAGE_KEYS.LAST_SYNC_RESULT] as SyncResult | undefined) ?? null
 }
 
 export async function setLastSyncResult(syncResult: SyncResult): Promise<void> {
-  await chrome.storage.session.set({ [STORAGE_KEYS.LAST_SYNC_RESULT]: syncResult })
+  await chrome.storage.local.set({ [STORAGE_KEYS.LAST_SYNC_RESULT]: syncResult })
 }

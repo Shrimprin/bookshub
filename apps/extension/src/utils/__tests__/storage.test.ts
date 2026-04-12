@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { SyncResult } from '../../types/messages.js'
 
-// chrome.storage.session のモック
+// chrome.storage.local のモック
 const mockStorage = new Map<string, unknown>()
 
 const chromeStorageMock = {
   storage: {
-    session: {
+    local: {
       get: vi.fn((keys: string[]) => {
         const result: Record<string, unknown> = {}
         for (const key of keys) {
@@ -63,9 +63,9 @@ describe('storage', () => {
       expect(mockStorage.get('bookhub_access_token')).toBe('my-token')
     })
 
-    it('chrome.storage.session.set が正しい引数で呼ばれる', async () => {
+    it('chrome.storage.local.set が正しい引数で呼ばれる', async () => {
       await storage.setAccessToken('abc')
-      expect(chromeStorageMock.storage.session.set).toHaveBeenCalledWith({
+      expect(chromeStorageMock.storage.local.set).toHaveBeenCalledWith({
         bookhub_access_token: 'abc',
       })
     })
@@ -78,11 +78,9 @@ describe('storage', () => {
       expect(mockStorage.has('bookhub_access_token')).toBe(false)
     })
 
-    it('chrome.storage.session.remove が正しい引数で呼ばれる', async () => {
+    it('chrome.storage.local.remove が正しい引数で呼ばれる', async () => {
       await storage.removeAccessToken()
-      expect(chromeStorageMock.storage.session.remove).toHaveBeenCalledWith([
-        'bookhub_access_token',
-      ])
+      expect(chromeStorageMock.storage.local.remove).toHaveBeenCalledWith(['bookhub_access_token'])
     })
   })
 

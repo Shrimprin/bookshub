@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // storage の変更を監視して popup を開いたまま状態を最新化する
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'session') return
+    if (areaName !== 'local') return
     if (STORAGE_KEYS.ACCESS_TOKEN in changes) {
       void renderAuthStatus(authStatusEl)
     }
