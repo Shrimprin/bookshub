@@ -5,7 +5,7 @@ import { ALLOWED_THUMBNAIL_HOSTS } from '@bookhub/shared'
 // サーバー側スキーマ (POST 時の validate) と CSP img-src を単一ソースで同期する。
 const IMG_HOSTS_CSP = ALLOWED_THUMBNAIL_HOSTS.map((host) => `https://${host}`).join(' ')
 
-// TODO(#issue-TBD): script-src 'unsafe-inline' を nonce 方式に置き換える。
+// TODO(#28): script-src 'unsafe-inline' を nonce 方式に置き換える。
 // Next.js App Router の RSC ハイドレーションには現状インラインスクリプトが
 // 必要で、middleware で per-request nonce を生成して style/script に差し込む
 // リファクタが必要。今 PR では他の CSP ディレクティブの強化に留める。
