@@ -58,6 +58,7 @@ MVP対象外（フェーズ2以降）:
 - `docs/requirements/mvp.md` — MVP仕様（実装対象・対象外機能）
 - `docs/specs/tech_stack.md` — 技術スタック定義書
 - `docs/specs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
+- `docs/specs/sequence_diagrams.md` — シーケンス図（認証・スクレイピング・本棚表示・手動登録）
 - `docs/specs/DB_SCHEMA.md` — データベーススキーマ定義(テーブル・RLS ポリシー)
 - `docs/specs/openapi.yaml` — API 仕様書（OpenAPI 3.1.0）
 - `docs/guides/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・テストガイド・PR チェックリスト
