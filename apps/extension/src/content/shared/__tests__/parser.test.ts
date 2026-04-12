@@ -25,6 +25,13 @@ describe('extractVolumeNumber', () => {
       expect(extractVolumeNumber(title)).toBeUndefined()
     },
   )
+
+  it.each([
+    ['アニメ化記念版(2024)', undefined],
+    ['特典コード付き（12345）', undefined],
+  ])('年号・コード "%s" は巻数として抽出しない → %s', (title, expected) => {
+    expect(extractVolumeNumber(title)).toBe(expected)
+  })
 })
 
 describe('extractSeriesTitle', () => {
@@ -136,6 +143,17 @@ describe('parseBooks', () => {
 
     const result = parseBooks(raw, store)
     expect(result[0]?.isAdult).toBe(false)
+  })
+
+  it('seriesTitle が空になる項目はスキップする', () => {
+    const raw: RawBookData[] = [
+      { title: '1巻', author: 'テスト作者' },
+      { title: 'ワンピース 1巻', author: 'テスト作者' },
+    ]
+
+    const result = parseBooks(raw, store)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ title: 'ワンピース' })
   })
 
   it('store を正しく付与する', () => {

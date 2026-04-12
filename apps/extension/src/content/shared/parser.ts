@@ -10,7 +10,7 @@ export interface RawBookData {
 const VOLUME_PATTERNS: RegExp[] = [
   /\s*第(\d+)巻/,
   /\s*(\d+)巻/,
-  /[（(]\s*(\d+)\s*[）)]/,
+  /[（(](\d{1,3})[）)]/,
   /\s+Vol\.(\d+)/i,
   /\s+vol\s+(\d+)/i,
 ]
@@ -49,6 +49,7 @@ export function parseBooks(rawBooks: RawBookData[], store: Store): ScrapeBook[] 
 
     const volumeNumber = extractVolumeNumber(title)
     const seriesTitle = extractSeriesTitle(title)
+    if (!seriesTitle) continue
 
     let thumbnailUrl: string | undefined
     if (raw.thumbnailUrl && raw.thumbnailUrl.startsWith('https://')) {
