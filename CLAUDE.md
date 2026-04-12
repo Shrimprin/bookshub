@@ -66,12 +66,26 @@ MVP対象外（フェーズ2以降）:
 
 ## Common Commands
 
+### ルート
+
 ```bash
 pnpm dev          # Web アプリ開発サーバー起動
 pnpm build        # 全パッケージビルド
 pnpm lint         # 全パッケージ lint
 pnpm fix          # lint 自動修正 + prettier フォーマット（コミット前推奨）
 pnpm format:check # フォーマットチェックのみ
+pnpm test         # 全パッケージテスト実行
+```
+
+### Chrome 拡張機能
+
+```bash
+pnpm --filter extension dev           # 拡張機能開発ビルド（HMR あり）
+pnpm --filter extension build         # 拡張機能開発用ビルド
+BOOKHUB_API_URL=https://... pnpm --filter extension build:prod # 本番ビルド（HTTPS 必須）
+pnpm --filter extension test          # テスト実行
+pnpm --filter extension test:watch    # テストウォッチ
+pnpm --filter extension test:coverage # テストカバレッジ
 ```
 
 pre-commit フック（husky）により、コミット時に `pnpm lint` と `pnpm format:check` が自動実行される。

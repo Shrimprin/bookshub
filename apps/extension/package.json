@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint src"
+    "build": "vite build --mode development",
+    "build:prod": "vite build --mode production",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@bookhub/shared": "workspace:*"
@@ -16,9 +20,11 @@
     "@types/chrome": "^0.0.324",
     "@typescript-eslint/eslint-plugin": "^8.58.1",
     "@typescript-eslint/parser": "^8.58.1",
+    "@vitest/coverage-v8": "^4.1.4",
     "eslint": "^10.2.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.58.1",
-    "vite": "^6.3.3"
+    "vite": "^6.3.3",
+    "vitest": "^4.1.4"
   }
 }

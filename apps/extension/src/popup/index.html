@@ -4,11 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BookHub</title>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div id="app">
       <h1>BookHub</h1>
-      <p>TODO: ポップアップ UI を実装 (#9)</p>
+      <div id="auth-status" class="status"></div>
+      <div id="sync-status" class="status"></div>
+      <a id="bookshelf-link" href="#" target="_blank" rel="noopener noreferrer" class="link">本棚を開く</a>
     </div>
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>
