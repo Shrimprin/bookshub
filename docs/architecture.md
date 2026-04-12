@@ -22,6 +22,7 @@ hons/
 [ユーザー] → Supabase Auth でログイン
      ↓
 [Chrome拡張機能] Kindle / DMMのページをスクレイピング
+     ↓ 生データ解析（Parser）→ ScrapeBook[] に正規化
      ↓ POST (packages/shared の Zodスキーマでバリデーション)
 [Next.js API] /api/scrape で重複チェック → Supabase PostgreSQL に保存
      ↓
@@ -72,15 +73,19 @@ hons/
 │   └── extension/
 │       └── src/
 │           ├── background/         # Service Worker
+│           │   └── index.ts        # メッセージハンドリング、API通信、同期結果保存
 │           ├── content/
-│           │   ├── kindle.ts       # Kindle購入履歴スクレイパー
-│           │   ├── dmm.ts          # DMM購入履歴スクレイパー
+│           │   ├── kindle.ts       # Kindle購入履歴スクレイパー + 正規化 + 送信
+│           │   ├── dmm.ts          # DMM購入履歴スクレイパー + 正規化 + 送信
 │           │   └── shared/
-│           │       ├── parser.ts   # 生データ → 共通Book型への正規化
-│           │       └── sender.ts   # Web APIへのPOST処理
+│           │       ├── parser.ts   # 生データ解析：巻数抽出、シリーズタイトル正規化
+│           │       └── sender.ts   # Service Workerへのメッセージ送信
 │           ├── popup/              # 拡張機能ポップアップUI
+│           │   └── main.ts
+│           ├── types/
+│           │   └── messages.ts     # Content Script ↔ Service Worker メッセージ型
 │           └── utils/
-│               └── storage.ts      # chrome.storage ラッパー
+│               └── storage.ts      # chrome.storage ラッパー（トークン・同期結果）
 │
 ├── packages/
 │   └── shared/
@@ -151,6 +156,23 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
    - バリデーションスキーマで payload 検証
    - 重複検知 → Supabase へ保存
    - 結果を JSON で返信
+
+### Content Script から Service Worker への通信フロー
+
+1. **Content Script** (src/content/kindle.ts / dmm.ts)
+   - ページ読み込み後に `waitForElement()` で必要な DOM 要素を待機（タイムアウト: 10秒）
+   - `scrapeBooks()` で DOM をスクレイピング → `RawBookData[]` を取得
+   - `parseBooks()` で正規化：
+     - 巻数抽出（複数のパターン対応: 「第1巻」「1巻」「(1)」「Vol.1」等）
+     - シリーズタイトル正規化（巻数表記を除去）
+     - URL バリデーション（https:// で始まるもののみ）
+   - `sendScrapedBooks()` で Service Worker にメッセージを送信
+
+2. **Service Worker** (src/background/index.ts)
+   - Content Script からのメッセージを受信
+   - Zod スキーマでバリデーション
+   - `chrome.identity.getAuthToken()` で Supabase トークンを取得
+   - `/api/scrape` へ POST（Bearer トークン付き）
 
 ### エラーハンドリング
 

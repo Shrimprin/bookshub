@@ -161,7 +161,7 @@ pnpm test:coverage
 
 ### Chrome 拡張機能テスト
 
-拡張機能のテストでは、`chrome` グローバルオブジェクトをモック化して実行します：
+拡張機能のテストでは、`jsdom` で DOM 環境をシミュレートし、`chrome` グローバルオブジェクトをモック化して実行します：
 
 ```bash
 # 拡張機能テストの実行
@@ -176,11 +176,27 @@ pnpm --filter extension test:coverage
 
 **テスト範囲:**
 
-- Service Worker メッセージハンドリング
-- Content Script ↔ Background 通信
-- Token ライフサイクル（取得・保存・削除）
-- API エラーハンドリング（401/400/500）
-- 本棚タブリロード動作
+- **Service Worker** (`src/background/__tests__/`):
+  - メッセージハンドリング
+  - Content Script ↔ Background 通信
+  - Token ライフサイクル（取得・保存・削除）
+  - API エラーハンドリング（401/400/500）
+  - 本棚タブリロード動作
+
+- **Content Script - Kindle** (`src/content/__tests__/kindle.test.ts`):
+  - ページ判定（URL パターンマッチ）
+  - DOM スクレイピング
+  - タイムアウト処理（`waitForElement()`）
+  - Service Worker への送信
+
+- **Parser** (`src/content/shared/__tests__/parser.test.ts`):
+  - 巻数抽出（複数パターン: 「第1巻」「1巻」「(1)」「Vol.1」等）
+  - シリーズタイトル正規化（巻数表記・修飾語の除去）
+  - URL バリデーション
+
+- **Sender** (`src/content/shared/__tests__/sender.test.ts`):
+  - Service Worker へのメッセージ送信
+  - エラーハンドリング
 
 ## API エンドポイントリファレンス
 
@@ -406,6 +422,22 @@ Authorization: Bearer <token>
 
 ## Extension 開発ガイド
 
+### Content Script の実装パターン
+
+各ストアの Content Script は以下のパターンで実装：
+
+```
+1. ページ判定（isKindleContentPage()）
+   ↓
+2. DOM 待機（waitForElement()）
+   ↓
+3. スクレイピング（scrapeKindleBooks()）
+   ↓
+4. 正規化（parseBooks()）
+   ↓
+5. Service Worker へ送信（sendScrapedBooks()）
+```
+
 ### メッセージ型定義
 
 Content Script と Service Worker の通信は `src/types/messages.ts` で定義された型セーフなメッセージを使用します：
@@ -420,6 +452,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true // 非同期レスポンス有効化
 })
 ```
+
+### Parser（src/content/shared/parser.ts）
+
+生データから共通の `ScrapeBook[]` 型に正規化：
+
+```typescript
+// 巻数抽出
+extractVolumeNumber('ワンピース 107巻') // → 107
+
+// シリーズタイトル正規化
+extractSeriesTitle('ワンピース 107巻 特装版') // → 'ワンピース'
+
+// 一括パース
+const books = parseBooks(rawBooks, 'kindle')
+```
+
+対応パターン：
+
+- 「第1巻」「1巻」「(1)」「(01)」「Vol.1」「vol 1」
+- 修飾語除去：「特装版」「限定版」「通常版」
 
 ### ストレージ操作
 
