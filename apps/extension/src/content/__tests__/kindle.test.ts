@@ -15,34 +15,45 @@ vi.stubGlobal('chrome', {
 
 let nextAsinCounter = 0
 
+// Amazon Kindle のコンテンツリストページ実 DOM 構造を模擬:
+//   <div class="card">                           ← 書籍カード全体
+//     <div id="content-title-<ASIN>"             ← タイトル要素
+//          class="digital_entity_title">
+//       <div role="heading">作品名</div>
+//     </div>
+//     <div class="digital_entity_author">著者名</div>
+//     <img src="..." />
+//   </div>
 function createBookElement(opts: {
   title: string
   author: string
   thumbnailUrl?: string
 }): HTMLElement {
   const asin = `B${String(nextAsinCounter++).padStart(9, '0')}`
-  const container = document.createElement('div')
-  container.id = `content-title-${asin}`
+  const card = document.createElement('div')
+  card.className = 'card'
 
-  // タイトル: span[dir="auto"] の最初の要素 (フォールバック経路)
-  const titleEl = document.createElement('span')
-  titleEl.setAttribute('dir', 'auto')
-  titleEl.textContent = opts.title
-  container.appendChild(titleEl)
+  const titleCard = document.createElement('div')
+  titleCard.id = `content-title-${asin}`
+  titleCard.className = 'digital_entity_title'
+  const heading = document.createElement('div')
+  heading.setAttribute('role', 'heading')
+  heading.textContent = opts.title
+  titleCard.appendChild(heading)
+  card.appendChild(titleCard)
 
-  // 著者: span[dir="auto"] の 2 番目の要素
-  const authorEl = document.createElement('span')
-  authorEl.setAttribute('dir', 'auto')
+  const authorEl = document.createElement('div')
+  authorEl.className = 'digital_entity_author'
   authorEl.textContent = opts.author
-  container.appendChild(authorEl)
+  card.appendChild(authorEl)
 
   if (opts.thumbnailUrl) {
     const img = document.createElement('img')
     img.src = opts.thumbnailUrl
-    container.appendChild(img)
+    card.appendChild(img)
   }
 
-  return container
+  return card
 }
 
 function setupKindlePage(books: Parameters<typeof createBookElement>[0][]): void {
@@ -220,12 +231,13 @@ describe('kindle', () => {
     })
 
     it('書籍が 0 件の場合は送信しない', async () => {
-      // 書籍アイテム要素は存在するがタイトル・著者が空のケース。
+      // タイトル要素は存在するが、カード全体（著者要素を含む祖先）が見つからないケース。
       // waitForElement がマッチする → scrapeKindleBooks が空配列を返す → 早期 return
-      const container = document.createElement('div')
-      container.id = 'content-title-B000000000'
-      // タイトル・著者なし → scrapeKindleBooks がスキップ → 0 件
-      document.body.appendChild(container)
+      const orphan = document.createElement('div')
+      orphan.id = 'content-title-B000000000'
+      orphan.className = 'digital_entity_title'
+      // 著者要素なし → findBookCardRoot が null → スキップ
+      document.body.appendChild(orphan)
 
       await kindleModule.main()
 
