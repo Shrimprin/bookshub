@@ -103,13 +103,14 @@ cp .env.example apps/web/.env.local
 
 ### Chrome 拡張機能 （apps/extension）
 
-| 変数              | 必須   | 説明                                                                   |
-| ----------------- | ------ | ---------------------------------------------------------------------- |
-| `BOOKHUB_API_URL` | Yes\*  | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる）             |
-| `CRX_PUBLIC_KEY`  | No\*\* | Extension ID 固定化用の公開鍵 (base64)。dev ビルド時のみ使用（非秘密） |
+| 変数                          | 必須   | 説明                                                                                                                                     |
+| ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOKHUB_API_URL`             | Yes\*  | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる）                                                                               |
+| `CRX_PUBLIC_KEY`              | No\*\* | Extension ID 固定化用の公開鍵 (base64)。dev ビルド時のみ使用（非秘密）                                                                   |
+| `BOOKHUB_ALLOWED_WEB_ORIGINS` | No\*\* | Web アプリのオリジン（カンマ区切り）。dev は `localhost:3000` が自動設定、本番ビルドでは必須（パターン例: `https://bookhub.pages.dev/*`) |
 
 \* 開発時: `localhost:3000`、本番ビルド時: HTTPS な本番 URL（必須）
-\*\* 未設定の場合、Extension ID は `chrome://extensions` でロードするたびに変わる可能性がある
+\*\* `BOOKHUB_ALLOWED_WEB_ORIGINS` は本番ビルド（`--mode production`）時は必須。`CRX_PUBLIC_KEY` 未設定の場合、Extension ID は `chrome://extensions` でロードするたびに変わる可能性がある
 
 #### 設定方法
 
