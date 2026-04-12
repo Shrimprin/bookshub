@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { SyncResult } from '../../types/messages.js'
+import type { ScrapeSession } from '../../content/shared/scrape-session.js'
 
 // chrome.storage.local のモック
 const mockStorage = new Map<string, unknown>()
@@ -117,6 +118,55 @@ describe('storage', () => {
       }
       await storage.setLastSyncResult(syncResult)
       expect(mockStorage.get('bookhub_last_sync_result')).toEqual(syncResult)
+    })
+  })
+
+  describe('getScrapeSession', () => {
+    it('保存されていない場合 null を返す', async () => {
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('保存済みのセッションを返す', async () => {
+      const session: ScrapeSession = {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: [],
+      }
+      mockStorage.set('bookhub_scrape_session_v1', session)
+      const result = await storage.getScrapeSession()
+      expect(result).toEqual(session)
+    })
+  })
+
+  describe('setScrapeSession', () => {
+    it('セッションを保存できる', async () => {
+      const session: ScrapeSession = {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 1,
+        books: [],
+        seenKeys: [],
+      }
+      await storage.setScrapeSession(session)
+      expect(mockStorage.get('bookhub_scrape_session_v1')).toEqual(session)
+    })
+  })
+
+  describe('clearScrapeSession', () => {
+    it('セッションを削除できる', async () => {
+      const session: ScrapeSession = {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 1,
+        books: [],
+        seenKeys: [],
+      }
+      mockStorage.set('bookhub_scrape_session_v1', session)
+      await storage.clearScrapeSession()
+      expect(mockStorage.has('bookhub_scrape_session_v1')).toBe(false)
     })
   })
 })
