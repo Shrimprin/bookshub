@@ -1,6 +1,19 @@
+import type { ScrapeBook } from '@bookhub/shared'
 import type { RawBookData } from './shared/parser.js'
 import { parseBooks } from './shared/parser.js'
 import { sendScrapedBooks } from './shared/sender.js'
+import {
+  STALE_TTL_MS,
+  buildPageUrl,
+  canonicalUrl,
+  createEmptySession,
+  extractPageNumber,
+  isSessionStale,
+  mergeBooks,
+  shouldStopForSafety,
+  type ScrapeSession,
+} from './shared/scrape-session.js'
+import { clearScrapeSession, getScrapeSession, setScrapeSession } from '../utils/storage.js'
 
 const LOG_PREFIX = '[BookHub/Kindle]'
 
@@ -149,7 +162,7 @@ function logCardStructureDiagnostics(): void {
 
 // 指定したページ番号のリンク要素を探す。
 // Amazon Kindle のページネーションは「1, 2, 3, 4, >>, 16」のような数字リンクで、
-// 次へボタンは存在しないため、currentPage+1 のリンクを文字列マッチで探す。
+// 次へボタンは存在しない。currentPage+1 のリンクを文字列マッチで探す。
 function findPageLinkByNumber(pageNum: number): HTMLElement | null {
   const target = String(pageNum)
   // a, button, li, span, div の中から textContent が完全一致するものを探す
@@ -168,79 +181,106 @@ function findPageLinkByNumber(pageNum: number): HTMLElement | null {
   return null
 }
 
-// 現在のページの最初の titleCard の id を記録し、クリック後に変わるのを待つ
-function waitForPageChange(previousFirstId: string, timeout = 10_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const check = () => {
-      const first = document.querySelector<HTMLElement>(SELECTORS.titleCard)
-      if (first && first.id !== previousFirstId) {
-        observer.disconnect()
-        clearTimeout(timer)
-        resolve(true)
-        return true
-      }
-      return false
-    }
-
-    if (check()) return
-
-    const observer = new MutationObserver(() => {
-      check()
-    })
-    observer.observe(document.body, { childList: true, subtree: true })
-
-    const timer = setTimeout(() => {
-      observer.disconnect()
-      resolve(false)
-    }, timeout)
-  })
+// テスト時に差し替え可能にするため _internals オブジェクト経由で呼ぶ
+// (ESM では vi.spyOn で named export を直接 spy できないため)
+export const _internals = {
+  navigateTo(url: string): void {
+    window.location.href = url
+  },
 }
 
-async function scrapeAllPages(maxPages = 50): Promise<RawBookData[]> {
-  const allBooks: RawBookData[] = []
-  const seen = new Set<string>()
+function logParsedBooks(books: ScrapeBook[]): void {
+  const withVolume = books.filter((b) => b.volumeNumber !== undefined).length
+  const withoutVolume = books.length - withVolume
+  console.log(
+    `${LOG_PREFIX} parsed ${books.length} books (${withVolume} with volume, ${withoutVolume} without)`,
+  )
+  console.log(
+    `${LOG_PREFIX} sample:`,
+    books.slice(0, 5).map((b) => ({ title: b.title, volume: b.volumeNumber, author: b.author })),
+  )
+}
 
-  let currentPage = 1
-  for (let iter = 1; iter <= maxPages; iter++) {
-    const pageBooks = scrapeKindleBooks()
-    let newCount = 0
-    for (const book of pageBooks) {
-      const key = `${book.title}|${book.author}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        allBooks.push(book)
-        newCount++
-      }
-    }
-    console.log(
-      `${LOG_PREFIX} page ${currentPage}: scraped ${pageBooks.length} items (+${newCount} new, total ${allBooks.length})`,
-    )
+async function loadOrCreateSession(
+  currentUrl: string,
+  currentPage: number,
+): Promise<ScrapeSession> {
+  const existing = await getScrapeSession()
+  const now = Date.now()
 
-    // 次のページ番号のリンクを探す
-    const nextPageNum = currentPage + 1
-    const nextLink = findPageLinkByNumber(nextPageNum)
-    if (!nextLink) {
-      console.log(`${LOG_PREFIX} no link to page ${nextPageNum} found, assuming last page reached`)
-      break
-    }
-
-    const previousFirstId = document.querySelector<HTMLElement>(SELECTORS.titleCard)?.id ?? ''
-    console.log(`${LOG_PREFIX} clicking page ${nextPageNum} link (prevFirstId=${previousFirstId})`)
-    nextLink.click()
-
-    const changed = await waitForPageChange(previousFirstId, 10_000)
-    if (!changed) {
-      console.warn(
-        `${LOG_PREFIX} DOM did not change within 10s after clicking page ${nextPageNum}, stopping`,
-      )
-      break
-    }
-    currentPage = nextPageNum
-    // DOM 更新後に念のため軽く待つ (遅延ロードの画像や著者要素の追加を待つ)
-    await new Promise((r) => setTimeout(r, 500))
+  if (!existing) {
+    console.log(`${LOG_PREFIX} no existing session, creating new`)
+    return createEmptySession(currentUrl, now)
   }
 
-  return allBooks
+  // ステイル判定
+  if (isSessionStale(existing, now, STALE_TTL_MS)) {
+    console.log(
+      `${LOG_PREFIX} existing session is stale (age=${Math.round((now - existing.startedAt) / 1000)}s), discarding`,
+    )
+    await clearScrapeSession()
+    return createEmptySession(currentUrl, now)
+  }
+
+  // 別 URL (ソート変更等) 検知
+  if (existing.originalUrl !== canonicalUrl(currentUrl)) {
+    console.log(
+      `${LOG_PREFIX} session originalUrl differs (${existing.originalUrl} vs ${canonicalUrl(currentUrl)}), discarding`,
+    )
+    await clearScrapeSession()
+    return createEmptySession(currentUrl, now)
+  }
+
+  // pageNumber=1 で既存セッションがある = ユーザーが手動で先頭に戻った
+  if (currentPage === 1 && existing.lastPageScraped > 0) {
+    console.log(`${LOG_PREFIX} restarted at page 1, discarding existing session`)
+    await clearScrapeSession()
+    return createEmptySession(currentUrl, now)
+  }
+
+  // 連続性チェック: lastPageScraped+1 (次ページへの正常遷移) または
+  // currentPage === lastPageScraped (同じページのリロード = 後段でスキップされる) のみ許容
+  if (currentPage !== existing.lastPageScraped && currentPage !== existing.lastPageScraped + 1) {
+    console.log(
+      `${LOG_PREFIX} page jump detected (lastScraped=${existing.lastPageScraped}, current=${currentPage}), discarding session`,
+    )
+    await clearScrapeSession()
+    return createEmptySession(currentUrl, now)
+  }
+
+  console.log(
+    `${LOG_PREFIX} resuming session (lastScraped=${existing.lastPageScraped}, accumulated=${existing.books.length} books)`,
+  )
+  return existing
+}
+
+async function sendAndClear(books: ScrapeBook[]): Promise<void> {
+  if (books.length === 0) {
+    console.warn(`${LOG_PREFIX} 0 books to send, clearing session`)
+    await clearScrapeSession()
+    return
+  }
+  logParsedBooks(books)
+  console.log(`${LOG_PREFIX} sending ${books.length} books to background...`)
+  try {
+    const response = await sendScrapedBooks(books)
+    console.log(`${LOG_PREFIX} background response:`, response)
+    // AUTH_ERROR / NETWORK_ERROR の場合はセッションを保持して再試行可能にする
+    if (
+      !response.success &&
+      (response.code === 'AUTH_ERROR' || response.code === 'NETWORK_ERROR')
+    ) {
+      console.log(
+        `${LOG_PREFIX} ${response.code}: keeping session for retry. Re-visit Kindle page after fixing the issue.`,
+      )
+      return
+    }
+    // 成功 or 復帰不能エラー: セッションをクリア
+    await clearScrapeSession()
+  } catch (error) {
+    console.error(`${LOG_PREFIX} sendScrapedBooks failed:`, error)
+    // ネットワーク例外は保持
+  }
 }
 
 export async function main(): Promise<void> {
@@ -259,30 +299,68 @@ export async function main(): Promise<void> {
     return
   }
 
-  const rawBooks = await scrapeAllPages()
-  if (rawBooks.length === 0) {
-    console.warn(`${LOG_PREFIX} 0 books extracted across all pages, dumping diagnostics`)
-    logCardStructureDiagnostics()
+  const currentUrl = window.location.href
+  const currentPage = extractPageNumber(currentUrl)
+  console.log(`${LOG_PREFIX} current page: ${currentPage}`)
+
+  // セッションをロード or 新規作成
+  const session = await loadOrCreateSession(currentUrl, currentPage)
+
+  // 同じページの再スクレイプを防止 (リロード等の二重実行)
+  if (session.lastPageScraped >= currentPage) {
+    console.log(
+      `${LOG_PREFIX} page ${currentPage} already scraped (lastScraped=${session.lastPageScraped}), skipping`,
+    )
     return
   }
 
-  const books = parseBooks(rawBooks, 'kindle')
-  console.log(
-    `${LOG_PREFIX} parsed ${books.length} books (${books.filter((b) => b.volumeNumber !== undefined).length} with volume, ${books.filter((b) => b.volumeNumber === undefined).length} without)`,
-  )
-  // 最初の 5 件のパース結果をダンプして volume 抽出を検証可能にする
-  console.log(
-    `${LOG_PREFIX} sample:`,
-    books.slice(0, 5).map((b) => ({ title: b.title, volume: b.volumeNumber, author: b.author })),
-  )
-  console.log(`${LOG_PREFIX} sending to background...`)
-
-  try {
-    const response = await sendScrapedBooks(books)
-    console.log(`${LOG_PREFIX} background response:`, response)
-  } catch (error) {
-    console.error(`${LOG_PREFIX} sendScrapedBooks failed:`, error)
+  // 現在ページをスクレイプ
+  const rawBooks = scrapeKindleBooks()
+  if (rawBooks.length === 0) {
+    console.warn(`${LOG_PREFIX} 0 books extracted on page ${currentPage}`)
+    if (currentPage === 1) {
+      logCardStructureDiagnostics()
+    }
   }
+
+  const newBooks = parseBooks(rawBooks, 'kindle')
+  const seen = new Set<string>(session.seenKeys)
+  const merged = mergeBooks(session.books, newBooks, seen)
+  const updatedSession: ScrapeSession = {
+    ...session,
+    lastPageScraped: currentPage,
+    books: merged.books,
+    seenKeys: Array.from(merged.seenKeys),
+  }
+  console.log(
+    `${LOG_PREFIX} page ${currentPage}: +${newBooks.length} new books (total ${merged.books.length})`,
+  )
+
+  // セーフティ: 上限到達なら強制送信
+  if (shouldStopForSafety(merged.books.length, currentPage)) {
+    console.log(
+      `${LOG_PREFIX} safety limit reached (books=${merged.books.length}, page=${currentPage}), sending now`,
+    )
+    await sendAndClear(merged.books)
+    return
+  }
+
+  // 次ページの存在を確認
+  const nextPageNum = currentPage + 1
+  const nextLink = findPageLinkByNumber(nextPageNum)
+
+  if (!nextLink) {
+    // 最終ページ: 累積を送信してクリア
+    console.log(`${LOG_PREFIX} no link to page ${nextPageNum} found, last page reached`)
+    await sendAndClear(merged.books)
+    return
+  }
+
+  // 次ページがある: セッションを保存して URL ナビゲーション
+  await setScrapeSession(updatedSession)
+  const nextUrl = buildPageUrl(currentUrl, nextPageNum)
+  console.log(`${LOG_PREFIX} navigating to page ${nextPageNum}: ${nextUrl}`)
+  _internals.navigateTo(nextUrl)
 }
 
 main().catch((error) => {

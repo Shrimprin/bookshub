@@ -4,10 +4,35 @@ import type { SendScrapedBooksResponse } from '../../types/messages.js'
 
 // --- chrome API モック ---
 const mockSendMessage = vi.fn()
+const mockStorage = new Map<string, unknown>()
 
 vi.stubGlobal('chrome', {
   runtime: {
     sendMessage: mockSendMessage,
+  },
+  storage: {
+    local: {
+      get: vi.fn((keys: string[]) => {
+        const result: Record<string, unknown> = {}
+        for (const key of keys) {
+          const value = mockStorage.get(key)
+          if (value !== undefined) result[key] = value
+        }
+        return Promise.resolve(result)
+      }),
+      set: vi.fn((items: Record<string, unknown>) => {
+        for (const [key, value] of Object.entries(items)) {
+          mockStorage.set(key, value)
+        }
+        return Promise.resolve()
+      }),
+      remove: vi.fn((keys: string[]) => {
+        for (const key of keys) {
+          mockStorage.delete(key)
+        }
+        return Promise.resolve()
+      }),
+    },
   },
 })
 
@@ -73,6 +98,7 @@ describe('kindle', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockStorage.clear()
     document.body.innerHTML = ''
     // jsdom environment の場合 location をモック
     Object.defineProperty(window, 'location', {
@@ -242,6 +268,232 @@ describe('kindle', () => {
       await kindleModule.main()
 
       expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('main: ページネーション', () => {
+    function addPageLink(pageNum: number): void {
+      const link = document.createElement('a')
+      link.textContent = String(pageNum)
+      link.href = `?pageNumber=${pageNum}`
+      document.body.appendChild(link)
+    }
+
+    function setupSinglePage(): void {
+      setupKindlePage([{ title: 'ワンピース 1巻', author: '尾田栄一郎' }])
+    }
+
+    it('単一ページ (次ページリンクなし) → 即座に送信', async () => {
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      setupSinglePage()
+      // ページ 2 リンクなし
+
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalledOnce()
+      expect(navigateSpy).not.toHaveBeenCalled()
+      // セッションは送信後にクリアされる
+      expect(mockStorage.has('bookhub_scrape_session_v1')).toBe(false)
+      navigateSpy.mockRestore()
+    })
+
+    it('複数ページ 1 ページ目 → 送信せずセッション保存し次ページへ navigate', async () => {
+      setupSinglePage()
+      addPageLink(2)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      // 送信は呼ばれない
+      expect(mockSendMessage).not.toHaveBeenCalled()
+      // ナビゲーションが起きる
+      expect(navigateSpy).toHaveBeenCalledOnce()
+      const navigatedTo = navigateSpy.mock.calls[0]?.[0] as string
+      expect(navigatedTo).toContain('pageNumber=2')
+      // セッションが保存される
+      const session = mockStorage.get('bookhub_scrape_session_v1') as
+        | Record<string, unknown>
+        | undefined
+      expect(session).toBeDefined()
+      expect(session?.lastPageScraped).toBe(1)
+      navigateSpy.mockRestore()
+    })
+
+    it('複数ページ 2 ページ目 (既存セッションあり、次ページなし) → 累積送信', async () => {
+      // 既存セッションを準備
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 1,
+        books: [
+          {
+            title: 'ワンピース',
+            author: '尾田栄一郎',
+            volumeNumber: 1,
+            store: 'kindle',
+            isAdult: false,
+          },
+        ],
+        seenKeys: ['ワンピース|尾田栄一郎|1'],
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=2'
+      setupKindlePage([{ title: 'ワンピース 2巻', author: '尾田栄一郎' }])
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 2, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalledOnce()
+      const sentMessage = mockSendMessage.mock.calls[0]?.[0] as { books: unknown[] }
+      // 2 件の累積 (ページ 1 の 1 巻 + ページ 2 の 2 巻)
+      expect(sentMessage.books).toHaveLength(2)
+      expect(navigateSpy).not.toHaveBeenCalled()
+      // セッションがクリアされる
+      expect(mockStorage.has('bookhub_scrape_session_v1')).toBe(false)
+      navigateSpy.mockRestore()
+    })
+
+    it('ステイルセッション (6 分前) → 破棄して新規開始', async () => {
+      const sixMinutesAgo = Date.now() - 6 * 60 * 1000
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: sixMinutesAgo,
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 5,
+        books: [
+          {
+            title: 'oldbook',
+            author: 'old',
+            store: 'kindle',
+            isAdult: false,
+          },
+        ],
+        seenKeys: ['oldbook|old|null'],
+      })
+      setupSinglePage()
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      // 古いセッションは破棄され、新規 1 件のみ送信される
+      const sentMessage = mockSendMessage.mock.calls[0]?.[0] as { books: { title: string }[] }
+      expect(sentMessage.books).toHaveLength(1)
+      expect(sentMessage.books[0]?.title).toBe('ワンピース')
+      navigateSpy.mockRestore()
+    })
+
+    it('originalUrl が異なるセッション → 破棄して新規開始', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/titleAsc/',
+        lastPageScraped: 3,
+        books: [
+          {
+            title: 'oldbook',
+            author: 'old',
+            store: 'kindle',
+            isAdult: false,
+          },
+        ],
+        seenKeys: ['oldbook|old|null'],
+      })
+      setupSinglePage()
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      const sentMessage = mockSendMessage.mock.calls[0]?.[0] as { books: { title: string }[] }
+      expect(sentMessage.books).toHaveLength(1)
+      expect(sentMessage.books[0]?.title).toBe('ワンピース')
+      navigateSpy.mockRestore()
+    })
+
+    it('AUTH_ERROR 時はセッションを保持する', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 1,
+        books: [
+          {
+            title: 'ワンピース',
+            author: '尾田栄一郎',
+            volumeNumber: 1,
+            store: 'kindle',
+            isAdult: false,
+          },
+        ],
+        seenKeys: ['ワンピース|尾田栄一郎|1'],
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=2'
+      setupKindlePage([{ title: 'ワンピース 2巻', author: '尾田栄一郎' }])
+      mockSendMessage.mockResolvedValue({
+        success: false,
+        error: '未認証',
+        code: 'AUTH_ERROR',
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalled()
+      // セッションは保持される (再ログイン後に再送可能)
+      expect(mockStorage.has('bookhub_scrape_session_v1')).toBe(true)
+      navigateSpy.mockRestore()
+    })
+
+    it('同じページの再スクレイプはスキップする (リロード対策)', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: [],
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=2'
+      setupSinglePage()
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+      expect(navigateSpy).not.toHaveBeenCalled()
+      navigateSpy.mockRestore()
     })
   })
 })
