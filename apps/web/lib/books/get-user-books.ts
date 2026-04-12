@@ -33,6 +33,8 @@ export async function getUserBooks(
       'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, created_at)',
       { count: 'exact' },
     )
+    // RLS と併せた defense in depth: RLS policy migration のバグや service_role
+    // 経由の誤用でも別ユーザーのデータが漏れないよう明示的にフィルタする。
     .eq('user_id', userId)
 
   if (query.q) {
