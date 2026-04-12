@@ -19,7 +19,7 @@
 
 ユーザーが Web アプリにログインし、その後 Chrome 拡張機能がそのセッションを利用できるようになるまでの流れ。
 
-Supabase Auth は PKCE フローを使用する。Web 側は cookie ベースのセッション、拡張機能側は `chrome.storage.session` にアクセストークンを保存する。Web から拡張機能へのトークン受け渡しには Chrome 公式の `externally_connectable` + `chrome.runtime.sendMessage` を用いる。
+Supabase Auth は PKCE フローを使用する。Web 側は cookie ベースのセッション、拡張機能側は `chrome.storage.local` にアクセストークンを保存する。Web から拡張機能へのトークン受け渡しには Chrome 公式の `externally_connectable` + `chrome.runtime.sendMessage` を用いる。
 
 ```mermaid
 sequenceDiagram
@@ -32,7 +32,7 @@ sequenceDiagram
     participant Sync as syncTokenOnAuthChange
     participant Sender as sendTokenToExtension
     participant BG as Background SW<br/>(onMessageExternal)
-    participant Storage as chrome.storage<br/>.session
+    participant Storage as chrome.storage<br/>.local
 
     User->>Login: /login にアクセス
     Login->>Auth: signInWithOAuth('google')
@@ -84,7 +84,7 @@ sequenceDiagram
 - **`ExtensionTokenBridge`**: `apps/web/components/auth/extension-token-bridge.tsx` は Client Component で、`app/(protected)/layout.tsx` に配置される。`useEffect` 内で `getSession()` による初期同期と `onAuthStateChange` 購読を行う
 - **Chrome 公式経路**: 拡張機能は Supabase の cookie を直接読めないため、`externally_connectable.matches` に登録された Web オリジンからの `chrome.runtime.sendMessage` で通信する
 - **オリジン検証**: Background の `handleExternalMessage` は `sender.origin` を `__ALLOWED_EXTERNAL_ORIGINS__` (vite define 経由で注入) で厳密一致検証する
-- **トークン保存**: `chrome.storage.session` に保存し、ブラウザ終了時にクリアされる (永続化しない)
+- **トークン保存**: `chrome.storage.local` に保存し、拡張機能 reload / ブラウザ再起動を跨いで保持される。Supabase access token は 1 時間で失効するため、ディスク漏洩時の悪用期間は限定的
 - **`TOKEN_REFRESHED` での再送**: Supabase の自動トークン更新時も Bridge が検知して拡張機能側を最新化する
 - **ブラウザ互換**: `sendTokenToExtension` は `chrome` 未定義 (Firefox/Safari/SSR) や拡張機能未インストール時は no-op で安全にスキップする
 - **Extension ID 固定化**: CRXJS の `publicKey` オプション (`CRX_PUBLIC_KEY` 環境変数経由) で dev/staging の Extension ID を固定し、Web アプリ側の `NEXT_PUBLIC_EXTENSION_ID` と一致させる
@@ -95,74 +95,79 @@ sequenceDiagram
 
 ユーザーが Kindle の購入履歴ページを開いたときに、Content Script がページ内の書籍データを抽出し、API 経由で DB に保存するフロー。
 
+Kindle 購入履歴ページは `?pageNumber=N` クエリで完全ナビゲーションするため、Content Script は各ページ遷移で再起動される。`chrome.storage.local` の `bookhub_scrape_session_v1` に進行状態を保存し、複数ページの書籍を累積してから 1 回の API 呼び出しで送信する。
+
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
     participant Page as Kindle ページ<br/>(Amazon)
     participant CS as Content Script<br/>(kindle.ts)
+    participant Session as scrape-session.ts<br/>(純粋関数)
     participant Parser as parser.ts
-    participant Sender as sender.ts
+    participant Storage as chrome.storage<br/>.local
     participant BG as Background SW<br/>(background/index.ts)
-    participant Storage as chrome.storage<br/>.session
     participant API as /api/scrape<br/>(Edge Route)
     participant DB as Supabase DB
     participant Tab as 本棚タブ
 
     User->>Page: 購入履歴ページを開く<br/>(contentlist/booksAll/*)
-    Page->>CS: document_idle で<br/>kindle.ts 実行
-    CS->>CS: isKindleContentPage() で<br/>URL チェック
-    CS->>Page: waitForElement(SELECTORS.bookItem)
-    Page-->>CS: 書籍要素が出現
-    CS->>Page: querySelectorAll(SELECTORS.bookItem)
-    Page-->>CS: 書籍要素配列
-    CS->>CS: scrapeKindleBooks()<br/>RawBookData[] を構築
 
-    CS->>Parser: parseBooks(rawBooks, 'kindle')
-    Parser->>Parser: extractVolumeNumber()<br/>extractSeriesTitle()
-    Parser->>Parser: thumbnailUrl 検証<br/>(https:// チェック)
-    Parser-->>CS: ScrapeBook[]
+    loop 全ページを順次処理 (?pageNumber=1..N)
+        Page->>CS: document_idle で<br/>kindle.ts 実行 (再起動)
+        CS->>CS: extractPageNumber(URL)
+        CS->>Storage: getScrapeSession()
+        alt 既存セッションあり
+            CS->>Session: isSessionStale / originalUrl 検証
+            alt 5 分以上前 / URL 不一致 / 連続性破綻
+                CS->>Storage: clearScrapeSession()
+                CS->>Session: createEmptySession()
+            else 有効
+                CS->>CS: 既存セッションを使用
+            end
+        else セッションなし
+            CS->>Session: createEmptySession()
+        end
 
-    CS->>Sender: sendScrapedBooks(books)
-    Sender->>BG: chrome.runtime.sendMessage<br/>{type: SEND_SCRAPED_BOOKS, books}
+        CS->>Page: scrapeKindleBooks()
+        Page-->>CS: RawBookData[]
+        CS->>Parser: parseBooks(rawBooks, 'kindle')
+        Parser-->>CS: ScrapeBook[]
+        CS->>Session: mergeBooks(existing, newBooks)
+        Session-->>CS: 累積後の books
 
-    BG->>BG: sender.id === runtime.id チェック
-    BG->>Storage: getAccessToken()
-    Storage-->>BG: token
-
-    alt token なし
-        BG-->>Sender: {success: false, code: AUTH_ERROR}
-    else token あり
-        BG->>BG: scrapePayloadSchema.safeParse()
-        alt バリデーション失敗
-            BG-->>Sender: {success: false, code: VALIDATION_ERROR}
-        else バリデーション成功
-            BG->>API: POST /api/scrape<br/>Authorization: Bearer token<br/>{books}
-
+        CS->>Page: findPageLinkByNumber(currentPage + 1)
+        alt 次ページあり
+            CS->>Storage: setScrapeSession(updated)
+            CS->>Page: window.location.href = ?pageNumber=N+1
+            Note over Page: ページ遷移 → CS 再起動
+        else 最終ページ
+            CS->>BG: sendScrapedBooks(allBooks)
+            BG->>BG: sender.id 検証
+            BG->>Storage: getAccessToken()
+            Storage-->>BG: token
+            BG->>BG: scrapePayloadSchema.safeParse()
+            BG->>API: POST /api/scrape<br/>Authorization: Bearer token
             API->>API: createClientFromToken(token)
-            API->>API: scrapePayloadSchema.safeParse()
             API->>DB: processScrapePayload()
-            DB->>DB: 各書籍の book_id 解決<br/>(既存検索 or INSERT)
-            DB->>DB: user_books を一括 SELECT<br/>(重複検知)
-            DB->>DB: user_books UPSERT
+            DB->>DB: book_id 解決 + user_books UPSERT
             DB-->>API: {savedCount, duplicateCount, duplicates}
-            API-->>BG: 200 OK + ScrapeResponse
-
+            API-->>BG: 200 OK
             BG->>Storage: setLastSyncResult(result)
-            BG->>Tab: chrome.tabs.query({url: bookshelf*})
-            Tab-->>BG: 該当タブ一覧
-            BG->>Tab: chrome.tabs.reload(tabId)
-            BG-->>Sender: {success: true, data}
+            BG->>Tab: chrome.tabs.query + reload
+            BG-->>CS: {success: true, data}
+            CS->>Storage: clearScrapeSession()
         end
     end
-
-    Sender-->>CS: response
 ```
 
 ### ポイント
 
 - `manifest.config.ts` の `matches` で `contentlist/booksAll/*` に絞っており、それ以外のページでは Content Script は実行されない
-- `parser.ts` は DOM 非依存の純粋関数で、テストしやすい設計
+- `parser.ts` および `scrape-session.ts` は DOM 非依存の純粋関数で、ユニットテスト容易性を確保
 - バリデーションは Content Script 層・Background 層・API 層の 3 重で行う（信頼境界は API 層）
+- ページネーション中にユーザーがタブを閉じた場合、5 分以内に再訪すれば続きから再開、5 分超で破棄
+- セーフティ: 累積 500 冊または 50 ページ到達で強制送信 (`scrapePayloadSchema.books.max(500)` と一致)
+- AUTH_ERROR / NETWORK_ERROR 時はセッションを保持して、ログイン後の再訪で再送可能
 - 同期完了後に `chrome.tabs.reload` で本棚タブを自動リロードし、UI を最新化する
 - レート制限は Edge Runtime ではステートレスのため Cloudflare WAF 側で設定する
 

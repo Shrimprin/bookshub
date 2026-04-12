@@ -147,7 +147,7 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
    - `sender.id === chrome.runtime.id` で送信元検証（セキュリティ）
    - Zod スキーマで payload をバリデーション
    - `/api/scrape` へ Bearer トークン付きで POST
-   - 同期結果を `chrome.storage.session` に保存
+   - 同期結果を `chrome.storage.local` に保存
    - 本棚タブを自動リロード
    - Response を Content Script へ返信
 
@@ -171,7 +171,7 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
 2. **Service Worker** (src/background/index.ts)
    - Content Script からのメッセージを受信
    - Zod スキーマでバリデーション
-   - `chrome.storage.session` から Supabase アクセストークンを取得 (Web アプリから受け渡し済み)
+   - `chrome.storage.local` から Supabase アクセストークンを取得 (Web アプリから受け渡し済み)
    - `/api/scrape` へ POST（Bearer トークン付き）
 
 ### Web アプリ → 拡張機能のトークン受け渡し
@@ -189,7 +189,7 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
    - `chrome.runtime.onMessageExternal` で受信
    - `sender.origin` を `__ALLOWED_EXTERNAL_ORIGINS__` (vite define 経由で注入) で厳密一致検証
    - Zod `externalExtensionMessageSchema` でバリデーション (token の形式・長さ)
-   - 許可されれば `chrome.storage.session` に保存 (永続化なし)
+   - 許可されれば `chrome.storage.local` に保存 (拡張機能 reload を跨いで保持)
 
 3. **外部メッセージ型** (`packages/shared/src/schemas/external-message-schema.ts`)
    - `SetAccessTokenMessage` / `ClearAccessTokenMessage`
@@ -203,6 +203,33 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
 - **`NEXT_PUBLIC_EXTENSION_ID`**: Web アプリが `sendTokenToExtension` で使用する送信先 ID。`chrome://extensions` で確認した ID を設定
 - 公開鍵・Extension ID はいずれも**公開情報**であり秘密ではない。`externally_connectable.matches` がセキュリティ境界となる
 - 本番ビルドでは `publicKey` を埋め込まず、Chrome Web Store が発行する ID を使う
+
+### Storage 設計
+
+拡張機能の状態は `chrome.storage.local` に保存する。`chrome.storage.session` は拡張機能 reload で消去されるため、開発体験 (Hot Reload で頻繁にリロードする) と保護されたユーザー UX のため `local` を採用。
+
+| キー                        | 内容                              | 保持期間                                      |
+| --------------------------- | --------------------------------- | --------------------------------------------- |
+| `bookhub_access_token`      | Supabase access token             | TOKEN_REFRESHED で上書き、SIGNED_OUT でクリア |
+| `bookhub_last_sync_result`  | 直近のスクレイピング同期結果      | 次回同期で上書き                              |
+| `bookhub_scrape_session_v1` | Kindle 累積スクレイピング進行状態 | 完了 / 5 分 TTL 超過 / リセットでクリア       |
+
+**セキュリティ判断**: access token のみを保存 (refresh token は保存しない)。Supabase access token は 1 時間で失効するため、ディスク漏洩時の悪用期間が限定される。Supabase RLS により、仮にトークンが漏洩しても被害は当該ユーザーのデータに限定される。
+
+### Kindle ページネーションの累積セッション
+
+Amazon の Kindle 購入履歴ページ (`?pageNumber=N`) は完全なフルナビゲーションでページ遷移するため、Content Script のコンテキストが各ページ遷移で破棄される。複数ページの書籍を 1 回の API 呼び出しで送信するため、`chrome.storage.local` に進行状態を保存する累積方式を採用。
+
+1. Content Script が読み込まれると `getScrapeSession()` で既存セッションを取得
+2. セッションがない、または stale (5 分以上前) / `originalUrl` が異なる / 連続性が崩れている場合は新規作成
+3. 現在ページの書籍をスクレイプして既存セッションにマージ (`mergeBooks` で重複排除)
+4. 次ページ番号のリンク (`findPageLinkByNumber`) を探す
+5. リンクがあれば `setScrapeSession` で保存 → `window.location.href` で `?pageNumber=N+1` に遷移
+6. リンクがなければ最終ページとして累積を Background に送信 → `clearScrapeSession`
+7. AUTH_ERROR / NETWORK_ERROR の場合はセッションを保持 (再ログイン後に再開可能)
+8. セーフティ: `MAX_BOOKS_PER_REQUEST = 500` (`scrapePayloadSchema.books.max`) または `MAX_PAGES = 50` 到達で強制送信
+
+純粋関数 (`extractPageNumber`, `buildPageUrl`, `mergeBooks` 等) は `apps/extension/src/content/shared/scrape-session.ts` に集約してテスト容易性を確保。
 
 ### エラーハンドリング
 
