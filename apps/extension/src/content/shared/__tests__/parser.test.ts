@@ -40,6 +40,14 @@ describe('extractVolumeNumber', () => {
   ])('タイトル末尾の裸の数字 "%s" → %i', (title, expected) => {
     expect(extractVolumeNumber(title)).toBe(expected)
   })
+
+  it.each([
+    ['僕らはみんな河合荘（６） (ヤングキングコミックス)', 6],
+    ['ワンピース（１０７）', 107],
+    ['鬼滅の刃 ２３巻', 23],
+  ])('全角数字 "%s" → %i', (title, expected) => {
+    expect(extractVolumeNumber(title)).toBe(expected)
+  })
 })
 
 describe('extractSeriesTitle', () => {
@@ -51,6 +59,10 @@ describe('extractSeriesTitle', () => {
     ['進撃の巨人 34巻 特装版', '進撃の巨人'],
     ['ONE PIECE Vol.107', 'ONE PIECE'],
     ['3月のライオン 18巻', '3月のライオン'],
+    [
+      '僕らはみんな河合荘（６） (ヤングキングコミックス)',
+      '僕らはみんな河合荘 (ヤングキングコミックス)',
+    ],
   ])('"%s" → "%s"', (title, expected) => {
     expect(extractSeriesTitle(title)).toBe(expected)
   })

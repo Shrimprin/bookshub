@@ -7,6 +7,14 @@ export interface RawBookData {
   isAdult?: boolean
 }
 
+// 全角数字 ０-９ (U+FF10-U+FF19) を半角 0-9 (U+0030-U+0039) に正規化する
+// Amazon Kindle のタイトルは全角半角が混在するため (例: 「僕らはみんな河合荘（６）」)
+function normalizeDigits(text: string): string {
+  return text.replace(/[\uFF10-\uFF19]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30),
+  )
+}
+
 const VOLUME_PATTERNS: RegExp[] = [
   /\s*第(\d+)巻/,
   /\s*(\d+)巻/,
@@ -19,8 +27,9 @@ const VOLUME_PATTERNS: RegExp[] = [
 ]
 
 export function extractVolumeNumber(title: string): number | undefined {
+  const normalized = normalizeDigits(title)
   for (const pattern of VOLUME_PATTERNS) {
-    const match = title.match(pattern)
+    const match = normalized.match(pattern)
     if (match?.[1]) {
       return Number(match[1])
     }
@@ -29,7 +38,7 @@ export function extractVolumeNumber(title: string): number | undefined {
 }
 
 export function extractSeriesTitle(title: string): string {
-  let cleaned = title
+  let cleaned = normalizeDigits(title)
 
   for (const pattern of VOLUME_PATTERNS) {
     cleaned = cleaned.replace(pattern, '')

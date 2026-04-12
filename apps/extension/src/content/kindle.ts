@@ -147,29 +147,25 @@ function logCardStructureDiagnostics(): void {
   }
 }
 
-// 次ページボタンを探す。Amazon の DOM は頻繁に変わるため複数戦略を使う。
-function findNextPageButton(): HTMLElement | null {
-  const candidates: (HTMLElement | null)[] = [
-    document.querySelector<HTMLElement>('#pagination-button-next-page-index'),
-    document.querySelector<HTMLElement>('[aria-label="Next"]'),
-    document.querySelector<HTMLElement>('[aria-label="次のページ"]'),
-    document.querySelector<HTMLElement>('[aria-label*="次"]'),
-    document.querySelector<HTMLElement>('[aria-label*="Next"]'),
-  ]
-  for (const c of candidates) {
-    if (c) return c
+// 指定したページ番号のリンク要素を探す。
+// Amazon Kindle のページネーションは「1, 2, 3, 4, >>, 16」のような数字リンクで、
+// 次へボタンは存在しないため、currentPage+1 のリンクを文字列マッチで探す。
+function findPageLinkByNumber(pageNum: number): HTMLElement | null {
+  const target = String(pageNum)
+  // a, button, li, span, div の中から textContent が完全一致するものを探す
+  const candidates = document.querySelectorAll<HTMLElement>(
+    'a, button, [role="button"], li, span, div',
+  )
+  for (const el of candidates) {
+    // 子要素が多い要素は誤検知の元になるのでスキップ (テキストのみのリンク要素を狙う)
+    if (el.children.length > 1) continue
+    const text = el.textContent?.trim() ?? ''
+    if (text !== target) continue
+    // 非表示要素はスキップ
+    if (el.offsetParent === null && el.tagName !== 'A') continue
+    return el
   }
   return null
-}
-
-function isButtonDisabled(button: HTMLElement): boolean {
-  if (button.hasAttribute('disabled')) return true
-  if (button.getAttribute('aria-disabled') === 'true') return true
-  if (button.classList.contains('a-disabled')) return true
-  if (button.classList.contains('disabled')) return true
-  const parent = button.parentElement
-  if (parent?.classList.contains('a-disabled')) return true
-  return false
 }
 
 // 現在のページの最初の titleCard の id を記録し、クリック後に変わるのを待つ
@@ -204,7 +200,8 @@ async function scrapeAllPages(maxPages = 50): Promise<RawBookData[]> {
   const allBooks: RawBookData[] = []
   const seen = new Set<string>()
 
-  for (let page = 1; page <= maxPages; page++) {
+  let currentPage = 1
+  for (let iter = 1; iter <= maxPages; iter++) {
     const pageBooks = scrapeKindleBooks()
     let newCount = 0
     for (const book of pageBooks) {
@@ -216,31 +213,29 @@ async function scrapeAllPages(maxPages = 50): Promise<RawBookData[]> {
       }
     }
     console.log(
-      `${LOG_PREFIX} page ${page}: scraped ${pageBooks.length} items (+${newCount} new, total ${allBooks.length})`,
+      `${LOG_PREFIX} page ${currentPage}: scraped ${pageBooks.length} items (+${newCount} new, total ${allBooks.length})`,
     )
 
-    const nextButton = findNextPageButton()
-    if (!nextButton) {
-      console.log(`${LOG_PREFIX} no next button found on page ${page}, stopping`)
-      break
-    }
-    if (isButtonDisabled(nextButton)) {
-      console.log(`${LOG_PREFIX} next button disabled on page ${page}, reached last page`)
+    // 次のページ番号のリンクを探す
+    const nextPageNum = currentPage + 1
+    const nextLink = findPageLinkByNumber(nextPageNum)
+    if (!nextLink) {
+      console.log(`${LOG_PREFIX} no link to page ${nextPageNum} found, assuming last page reached`)
       break
     }
 
-    const firstCardBefore = document.querySelector<HTMLElement>(SELECTORS.titleCard)
-    const previousFirstId = firstCardBefore?.id ?? ''
-    console.log(`${LOG_PREFIX} clicking next button (previousFirstId=${previousFirstId})`)
-    nextButton.click()
+    const previousFirstId = document.querySelector<HTMLElement>(SELECTORS.titleCard)?.id ?? ''
+    console.log(`${LOG_PREFIX} clicking page ${nextPageNum} link (prevFirstId=${previousFirstId})`)
+    nextLink.click()
 
     const changed = await waitForPageChange(previousFirstId, 10_000)
     if (!changed) {
       console.warn(
-        `${LOG_PREFIX} DOM did not change within 10s after clicking next, stopping at page ${page}`,
+        `${LOG_PREFIX} DOM did not change within 10s after clicking page ${nextPageNum}, stopping`,
       )
       break
     }
+    currentPage = nextPageNum
     // DOM 更新後に念のため軽く待つ (遅延ロードの画像や著者要素の追加を待つ)
     await new Promise((r) => setTimeout(r, 500))
   }
