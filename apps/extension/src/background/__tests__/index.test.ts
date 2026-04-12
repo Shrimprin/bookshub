@@ -38,7 +38,8 @@ vi.stubGlobal('chrome', {
   },
   tabs: {
     query: vi.fn((queryInfo: { url: string }) => {
-      if (queryInfo.url.includes('localhost')) {
+      // __API_BASE_URL__ は http://localhost:3000 なので bookshelf パターンにマッチ
+      if (queryInfo.url.includes('localhost:3000/bookshelf')) {
         return Promise.resolve([mockTabs[0]])
       }
       return Promise.resolve([])
@@ -291,9 +292,65 @@ describe('background', () => {
       })
     })
 
+    describe('全て重複の場合', () => {
+      it('savedCount=0, duplicateCount>0 のとき status が partial になる', async () => {
+        const apiResponse = {
+          savedCount: 0,
+          duplicateCount: 3,
+          duplicates: [
+            { title: '漫画A', existingStores: ['kindle'] },
+            { title: '漫画B', existingStores: ['dmm'] },
+            { title: '漫画C', existingStores: ['kindle', 'dmm'] },
+          ],
+        }
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(apiResponse),
+        })
+
+        const message: SendScrapedBooksMessage = {
+          type: 'SEND_SCRAPED_BOOKS',
+          books: testBooks,
+        }
+
+        await handleMessage(message, mockSender)
+
+        const syncResult = mockStorageData.get('bookhub_last_sync_result') as Record<
+          string,
+          unknown
+        >
+        expect(syncResult).toMatchObject({
+          status: 'partial',
+          savedCount: 0,
+          duplicateCount: 3,
+        })
+      })
+    })
+
     describe('unknown message', () => {
       it('不明なメッセージ type の場合 UNKNOWN_ERROR を返す', async () => {
         const result = await handleMessage({ type: 'INVALID_TYPE' }, mockSender)
+        expect(result).toEqual(
+          expect.objectContaining({
+            success: false,
+            code: 'UNKNOWN_ERROR',
+          }),
+        )
+      })
+
+      it('null の場合 UNKNOWN_ERROR を返す', async () => {
+        const result = await handleMessage(null, mockSender)
+        expect(result).toEqual(
+          expect.objectContaining({
+            success: false,
+            code: 'UNKNOWN_ERROR',
+          }),
+        )
+      })
+
+      it('type が文字列でない場合 UNKNOWN_ERROR を返す', async () => {
+        const result = await handleMessage({ type: 123 }, mockSender)
         expect(result).toEqual(
           expect.objectContaining({
             success: false,

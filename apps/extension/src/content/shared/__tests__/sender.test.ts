@@ -7,7 +7,6 @@ const mockSendMessage = vi.fn()
 vi.stubGlobal('chrome', {
   runtime: {
     sendMessage: mockSendMessage,
-    lastError: null,
   },
 })
 
@@ -26,12 +25,6 @@ describe('sender', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    // lastError をリセット
-    Object.defineProperty(chrome.runtime, 'lastError', {
-      value: null,
-      writable: true,
-      configurable: true,
-    })
     sender = await import('../sender.js')
   })
 
@@ -74,16 +67,19 @@ describe('sender', () => {
       expect(result).toEqual(errorResponse)
     })
 
-    it('chrome.runtime.lastError がある場合エラーを throw する', async () => {
-      Object.defineProperty(chrome.runtime, 'lastError', {
-        value: { message: 'Extension context invalidated' },
-        writable: true,
-        configurable: true,
-      })
-      mockSendMessage.mockResolvedValue(undefined)
+    it('sendMessage が reject した場合エラーを throw する', async () => {
+      mockSendMessage.mockRejectedValue(new Error('Extension context invalidated'))
 
       await expect(sender.sendScrapedBooks(testBooks)).rejects.toThrow(
         'Extension context invalidated',
+      )
+    })
+
+    it('sendMessage が非 Error で reject した場合も throw する', async () => {
+      mockSendMessage.mockRejectedValue('unknown error')
+
+      await expect(sender.sendScrapedBooks(testBooks)).rejects.toThrow(
+        'Failed to contact background script',
       )
     })
 

@@ -11,15 +11,26 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // --- メッセージハンドラ（テスト用に export） ---
 
+function isValidMessage(message: unknown): message is ExtensionMessage {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    typeof (message as { type: unknown }).type === 'string'
+  )
+}
+
 export async function handleMessage(
   message: unknown,
   _sender: chrome.runtime.MessageSender, // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<MessageResponse<ScrapeResponse>> {
-  const msg = message as ExtensionMessage
+  if (!isValidMessage(message)) {
+    return { success: false, error: '不正なメッセージ形式です', code: 'UNKNOWN_ERROR' }
+  }
 
-  switch (msg.type) {
+  switch (message.type) {
     case 'SEND_SCRAPED_BOOKS':
-      return await handleSendScrapedBooks(msg.books)
+      return await handleSendScrapedBooks(message.books)
     case 'RELOAD_BOOKSHELF':
       await reloadBookshelfTabs()
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
@@ -89,8 +100,17 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
   const data = (await response.json()) as ScrapeResponse
 
   // 5. 同期結果を保存
+  let status: SyncResult['status']
+  if (data.savedCount > 0 && data.duplicateCount === 0) {
+    status = 'success'
+  } else if (data.savedCount > 0 && data.duplicateCount > 0) {
+    status = 'partial'
+  } else {
+    // savedCount === 0: 全て重複 or 空データ
+    status = 'partial'
+  }
   const syncResult: SyncResult = {
-    status: data.duplicateCount > 0 && data.savedCount > 0 ? 'partial' : 'success',
+    status,
     savedCount: data.savedCount,
     duplicateCount: data.duplicateCount,
     duplicates: data.duplicates,
@@ -107,14 +127,11 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
 // --- 本棚タブリロード ---
 
 async function reloadBookshelfTabs(): Promise<void> {
-  const bookshelfPatterns = ['http://localhost:3000/bookshelf*', 'https://*.pages.dev/bookshelf*']
-
-  for (const pattern of bookshelfPatterns) {
-    const tabs = await chrome.tabs.query({ url: pattern })
-    for (const tab of tabs) {
-      if (tab.id !== undefined) {
-        await chrome.tabs.reload(tab.id)
-      }
+  const pattern = `${__API_BASE_URL__}/bookshelf*`
+  const tabs = await chrome.tabs.query({ url: pattern })
+  for (const tab of tabs) {
+    if (tab.id !== undefined) {
+      await chrome.tabs.reload(tab.id)
     }
   }
 }
