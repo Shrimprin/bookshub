@@ -163,10 +163,36 @@ function logCardStructureDiagnostics(): void {
 // 指定したページ番号のリンク要素を探す。
 // Amazon Kindle のページネーションは「1, 2, 3, 4, >>, 16」のような数字リンクで、
 // 次へボタンは存在しない。currentPage+1 のリンクを文字列マッチで探す。
+//
+// pagination コンテナを優先して探索することで、ページ内に偶然存在する数字テキスト
+// (例: 書籍数バッジ・カテゴリリンク・別ナビゲーション) との誤検知を防ぐ。
+const PAGINATION_CONTAINER_SELECTORS = [
+  '[class*="pagination"]',
+  '[class*="Pagination"]',
+  '[id*="pagination"]',
+  'nav',
+  'ul.a-pagination',
+] as const
+
 function findPageLinkByNumber(pageNum: number): HTMLElement | null {
   const target = String(pageNum)
-  // a, button, li, span, div の中から textContent が完全一致するものを探す
-  const candidates = document.querySelectorAll<HTMLElement>(
+
+  // 1. pagination 専用コンテナがあればそこから探す
+  for (const containerSel of PAGINATION_CONTAINER_SELECTORS) {
+    const containers = document.querySelectorAll<HTMLElement>(containerSel)
+    for (const container of containers) {
+      const found = findPageLinkInContainer(container, target)
+      if (found) return found
+    }
+  }
+
+  // 2. フォールバック: document 全体から (Amazon の DOM 変更で container 検出が
+  //    失敗したケース向け)。範囲は広いが children.length 制限で誤検知を抑える
+  return findPageLinkInContainer(document.body, target)
+}
+
+function findPageLinkInContainer(container: Element, target: string): HTMLElement | null {
+  const candidates = container.querySelectorAll<HTMLElement>(
     'a, button, [role="button"], li, span, div',
   )
   for (const el of candidates) {
@@ -223,9 +249,10 @@ async function loadOrCreateSession(
   }
 
   // 別 URL (ソート変更等) 検知
-  if (existing.originalUrl !== canonicalUrl(currentUrl)) {
+  const currentCanonical = canonicalUrl(currentUrl)
+  if (existing.originalUrl !== currentCanonical) {
     console.log(
-      `${LOG_PREFIX} session originalUrl differs (${existing.originalUrl} vs ${canonicalUrl(currentUrl)}), discarding`,
+      `${LOG_PREFIX} session originalUrl differs (${existing.originalUrl} vs ${currentCanonical}), discarding`,
     )
     await clearScrapeSession()
     return createEmptySession(currentUrl, now)
@@ -337,10 +364,14 @@ export async function main(): Promise<void> {
   )
 
   // セーフティ: 上限到達なら強制送信
+  // セッションを必ず保存してから送信する: AUTH_ERROR / NETWORK_ERROR で sendAndClear が
+  // セッションをクリアしないパスに入った場合、現ページの累積をディスクに残しておく必要がある
+  // (ユーザーが再ログイン後にページ 1 へ戻ってもデータを失わないようにするため)
   if (shouldStopForSafety(merged.books.length, currentPage)) {
     console.log(
       `${LOG_PREFIX} safety limit reached (books=${merged.books.length}, page=${currentPage}), sending now`,
     )
+    await setScrapeSession(updatedSession)
     await sendAndClear(merged.books)
     return
   }
@@ -350,8 +381,9 @@ export async function main(): Promise<void> {
   const nextLink = findPageLinkByNumber(nextPageNum)
 
   if (!nextLink) {
-    // 最終ページ: 累積を送信してクリア
+    // 最終ページ: 累積を送信してクリア (送信前にセッションを保存して retry 時の整合性を確保)
     console.log(`${LOG_PREFIX} no link to page ${nextPageNum} found, last page reached`)
+    await setScrapeSession(updatedSession)
     await sendAndClear(merged.books)
     return
   }

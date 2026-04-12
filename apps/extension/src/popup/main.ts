@@ -1,15 +1,10 @@
 import {
+  STORAGE_KEYS,
   clearScrapeSession,
   getAccessToken,
   getLastSyncResult,
   getScrapeSession,
 } from '../utils/storage.js'
-
-const STORAGE_KEYS = {
-  ACCESS_TOKEN: 'bookhub_access_token',
-  LAST_SYNC_RESULT: 'bookhub_last_sync_result',
-  SCRAPE_SESSION: 'bookhub_scrape_session_v1',
-} as const
 
 export async function renderAuthStatus(authStatusEl: HTMLElement | null): Promise<void> {
   if (!authStatusEl) return

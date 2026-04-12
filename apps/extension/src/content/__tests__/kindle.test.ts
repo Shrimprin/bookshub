@@ -495,5 +495,131 @@ describe('kindle', () => {
       expect(navigateSpy).not.toHaveBeenCalled()
       navigateSpy.mockRestore()
     })
+
+    it('ページジャンプ検知 (lastScraped=3 → currentPage=5) → セッション破棄して新規開始', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 3,
+        books: [
+          {
+            title: 'old-book',
+            author: 'old',
+            store: 'kindle',
+            isAdult: false,
+          },
+        ],
+        seenKeys: ['old-book|old|null'],
+      })
+      // ユーザーが手動で page=5 へジャンプ (lastScraped+1=4 ではない)
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=5'
+      setupKindlePage([{ title: '新規 1巻', author: '新規作者' }])
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      // ジャンプ検知で古いセッションは破棄され、現在ページから新規開始
+      // (page 5 の書籍 1 件のみが累積される)
+      const sentMessage = mockSendMessage.mock.calls[0]?.[0] as { books: { title: string }[] }
+      expect(sentMessage.books).toHaveLength(1)
+      expect(sentMessage.books[0]?.title).toBe('新規')
+      navigateSpy.mockRestore()
+    })
+
+    it('セーフティ上限到達時は次ページへ遷移せず送信し、セッションを保存する', async () => {
+      // 既存セッションに 499 冊蓄積済み (1 件追加で 500 件 = 上限)
+      const existingBooks = Array.from({ length: 499 }, (_, i) => ({
+        title: `book-${i}`,
+        author: 'author',
+        store: 'kindle',
+        isAdult: false,
+      }))
+      const existingSeenKeys = existingBooks.map((b) => `${b.title}|${b.author}|null`)
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 19,
+        books: existingBooks,
+        seenKeys: existingSeenKeys,
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=20'
+      // 現在のページに 1 件追加 → 計 500 件で上限到達
+      setupKindlePage([{ title: 'last 1巻', author: '作者' }])
+      // 次ページリンクも存在するが、上限で強制送信されるはず
+      const nextLink = document.createElement('a')
+      nextLink.textContent = '21'
+      document.body.appendChild(nextLink)
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 500, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      // 送信は呼ばれる、navigate は呼ばれない
+      expect(mockSendMessage).toHaveBeenCalledOnce()
+      const sentMessage = mockSendMessage.mock.calls[0]?.[0] as { books: unknown[] }
+      expect(sentMessage.books).toHaveLength(500)
+      expect(navigateSpy).not.toHaveBeenCalled()
+      // 成功時はセッションがクリアされる (sendAndClear 経由)
+      expect(mockStorage.has('bookhub_scrape_session_v1')).toBe(false)
+      navigateSpy.mockRestore()
+    })
+
+    it('セーフティ上限到達 + AUTH_ERROR の場合、セッション保存して保持する', async () => {
+      // 499 件蓄積 → 1 件追加で上限
+      const existingBooks = Array.from({ length: 499 }, (_, i) => ({
+        title: `book-${i}`,
+        author: 'author',
+        store: 'kindle',
+        isAdult: false,
+      }))
+      const existingSeenKeys = existingBooks.map((b) => `${b.title}|${b.author}|null`)
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 19,
+        books: existingBooks,
+        seenKeys: existingSeenKeys,
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=20'
+      setupKindlePage([{ title: 'last 1巻', author: '作者' }])
+      mockSendMessage.mockResolvedValue({
+        success: false,
+        error: '未認証',
+        code: 'AUTH_ERROR',
+      } satisfies SendScrapedBooksResponse)
+      const navigateSpy = vi
+        .spyOn(kindleModule._internals, 'navigateTo')
+        .mockImplementation(() => {})
+
+      await kindleModule.main()
+
+      // セッションは保持され、最新の累積 500 件を含む状態
+      const session = mockStorage.get('bookhub_scrape_session_v1') as {
+        books: unknown[]
+        lastPageScraped: number
+      }
+      expect(session).toBeDefined()
+      expect(session.books).toHaveLength(500)
+      expect(session.lastPageScraped).toBe(20)
+      navigateSpy.mockRestore()
+    })
   })
 })
