@@ -1,6 +1,11 @@
 import { defineManifest } from '@crxjs/vite-plugin'
 
-export default defineManifest({
+// TODO(本番ドメイン確定後): production モードの externally_connectable.matches に
+// Cloudflare Pages の URL (例: 'https://bookhub.pages.dev/*') を追加すること
+const DEV_ALLOWED_ORIGINS = ['http://localhost:3000/*']
+const PROD_ALLOWED_ORIGINS: string[] = []
+
+export default defineManifest((env) => ({
   manifest_version: 3,
   name: 'BookHub',
   version: '0.0.1',
@@ -8,6 +13,9 @@ export default defineManifest({
   // activeTab は現状不使用だが、将来的に手動スクレイピングトリガーで必要になる可能性あり
   permissions: ['storage', 'tabs'],
   host_permissions: ['https://www.amazon.co.jp/*', 'https://book.dmm.com/*'],
+  externally_connectable: {
+    matches: env.mode === 'production' ? PROD_ALLOWED_ORIGINS : DEV_ALLOWED_ORIGINS,
+  },
   action: {
     default_popup: 'src/popup/index.html',
     default_title: 'BookHub',
@@ -28,4 +36,4 @@ export default defineManifest({
       run_at: 'document_idle',
     },
   ],
-})
+}))
