@@ -171,8 +171,38 @@ type ErrorCode = 'VALIDATION_ERROR' | 'AUTH_ERROR' | 'API_ERROR' | 'NETWORK_ERRO
 2. **Service Worker** (src/background/index.ts)
    - Content Script からのメッセージを受信
    - Zod スキーマでバリデーション
-   - `chrome.identity.getAuthToken()` で Supabase トークンを取得
+   - `chrome.storage.session` から Supabase アクセストークンを取得 (Web アプリから受け渡し済み)
    - `/api/scrape` へ POST（Bearer トークン付き）
+
+### Web アプリ → 拡張機能のトークン受け渡し
+
+拡張機能は Supabase の cookie を直接読めないため、Web アプリ側の Client Component から Chrome 公式の `externally_connectable` 経由で `chrome.runtime.sendMessage` でトークンを送信する。
+
+1. **Web アプリ側** (`apps/web/components/auth/extension-token-bridge.tsx`)
+   - `(protected)/layout.tsx` に配置された Client Component
+   - `useEffect` で Supabase の `getSession()` による初回同期と `onAuthStateChange` 購読
+   - `SIGNED_IN` / `TOKEN_REFRESHED` / `INITIAL_SESSION` → `SET_ACCESS_TOKEN` を送信
+   - `SIGNED_OUT` → `CLEAR_ACCESS_TOKEN` を送信
+   - `chrome` 未定義 (Firefox/Safari/SSR) や拡張機能未インストール時は no-op
+
+2. **Background Service Worker** (`handleExternalMessage`)
+   - `chrome.runtime.onMessageExternal` で受信
+   - `sender.origin` を `__ALLOWED_EXTERNAL_ORIGINS__` (vite define 経由で注入) で厳密一致検証
+   - Zod `externalExtensionMessageSchema` でバリデーション (token の形式・長さ)
+   - 許可されれば `chrome.storage.session` に保存 (永続化なし)
+
+3. **外部メッセージ型** (`packages/shared/src/schemas/external-message-schema.ts`)
+   - `SetAccessTokenMessage` / `ClearAccessTokenMessage`
+   - 内部 `ExtensionMessage` とは独立した union 型で、ハンドラ混同を型レベルで防ぐ
+
+### Extension ID 管理
+
+開発環境では `@crxjs/vite-plugin` の `publicKey` オプションにより Extension ID を固定化する。
+
+- **`CRX_PUBLIC_KEY`**: Chrome 拡張機能の公開鍵 (base64)。dev ビルド時のみ `vite.config.ts` で `crx({ publicKey })` に渡される。これにより Extension ID が決定論的に算出され、開発者間で共通の ID を使える
+- **`NEXT_PUBLIC_EXTENSION_ID`**: Web アプリが `sendTokenToExtension` で使用する送信先 ID。`chrome://extensions` で確認した ID を設定
+- 公開鍵・Extension ID はいずれも**公開情報**であり秘密ではない。`externally_connectable.matches` がセキュリティ境界となる
+- 本番ビルドでは `publicKey` を埋め込まず、Chrome Web Store が発行する ID を使う
 
 ### エラーハンドリング
 
@@ -228,15 +258,18 @@ SUPABASE_SERVICE_ROLE_KEY=
 # 書籍情報API（どちらか一方）
 RAKUTEN_APP_ID=
 GOOGLE_BOOKS_API_KEY=
+
+# Chrome 拡張機能連携（未設定時はトークン送信を no-op でスキップ）
+NEXT_PUBLIC_EXTENSION_ID=
 ```
 
 ### Chrome 拡張機能 (ビルド時)
 
 ```bash
-# 開発時
-BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
+# 開発時 (Extension ID 固定化用の公開鍵を渡す)
+CRX_PUBLIC_KEY=<base64> BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
 
-# 本番時（HTTPS 必須）
+# 本番時（HTTPS 必須、publicKey は埋め込まない）
 BOOKHUB_API_URL=https://bookshelf.example.com pnpm --filter extension build:prod
 ```
 

@@ -89,30 +89,37 @@ cp .env.example apps/web/.env.local
 
 <!-- AUTO-GENERATED: generated from .env.example -->
 
-| 変数                            | 必須 | 説明                                              |
-| ------------------------------- | ---- | ------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Yes  | Supabase プロジェクト URL                         |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes  | Supabase 匿名キー（クライアントサイドで使用）     |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Yes  | Supabase サービスロールキー（サーバーサイドのみ） |
-| `RAKUTEN_APP_ID`                | No\* | 楽天ブックス API のアプリ ID                      |
-| `GOOGLE_BOOKS_API_KEY`          | No\* | Google Books API キー                             |
+| 変数                            | 必須   | 説明                                                                                          |
+| ------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Yes    | Supabase プロジェクト URL                                                                     |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes    | Supabase 匿名キー（クライアントサイドで使用）                                                 |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Yes    | Supabase サービスロールキー（サーバーサイドのみ）                                             |
+| `RAKUTEN_APP_ID`                | No\*   | 楽天ブックス API のアプリ ID                                                                  |
+| `GOOGLE_BOOKS_API_KEY`          | No\*   | Google Books API キー                                                                         |
+| `NEXT_PUBLIC_EXTENSION_ID`      | No\*\* | Chrome 拡張機能の ID。`chrome://extensions` で確認。未設定時はトークン送信を no-op でスキップ |
 
 \*書籍情報 API はどちらか一方が必要
+\*\*拡張機能連携を使う場合のみ必要（非秘密情報）
 
 ### Chrome 拡張機能 （apps/extension）
 
-| 変数              | 必須  | 説明                                                       |
-| ----------------- | ----- | ---------------------------------------------------------- |
-| `BOOKHUB_API_URL` | Yes\* | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる） |
+| 変数              | 必須   | 説明                                                                   |
+| ----------------- | ------ | ---------------------------------------------------------------------- |
+| `BOOKHUB_API_URL` | Yes\*  | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる）             |
+| `CRX_PUBLIC_KEY`  | No\*\* | Extension ID 固定化用の公開鍵 (base64)。dev ビルド時のみ使用（非秘密） |
 
 \* 開発時: `localhost:3000`、本番ビルド時: HTTPS な本番 URL（必須）
+\*\* 未設定の場合、Extension ID は `chrome://extensions` でロードするたびに変わる可能性がある
 
 #### 設定方法
 
 **開発時:**
 
 ```bash
-BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
+# Extension ID を固定化したい場合は CRX_PUBLIC_KEY も設定
+CRX_PUBLIC_KEY=<base64 public key> \
+BOOKHUB_API_URL=http://localhost:3000 \
+pnpm --filter extension dev
 ```
 
 **本番ビルド時:**
@@ -122,6 +129,23 @@ BOOKHUB_API_URL=https://bookshelf.example.com pnpm --filter extension build:prod
 ```
 
 <!-- /AUTO-GENERATED -->
+
+### Chrome 拡張機能 × Web アプリ 連携のセットアップ
+
+1. `pnpm --filter extension dev` で拡張機能をビルド
+2. Chrome で `chrome://extensions` を開き、デベロッパーモード ON
+3. 「パッケージ化されていない拡張機能を読み込む」で `apps/extension/dist/` を指定
+4. 表示された Extension ID を `apps/web/.env.local` の `NEXT_PUBLIC_EXTENSION_ID` に設定
+5. （任意）`CRX_PUBLIC_KEY` を `.env` に設定して ID を固定化すると、以降の再読み込みで ID が変わらない
+6. `pnpm dev` で Web アプリを起動してログイン
+
+#### 動作確認チェックリスト
+
+- [ ] `/login` からログインできる
+- [ ] ログイン後、拡張機能のポップアップが「ログイン中」に変わる
+- [ ] Kindle 購入履歴ページ (`https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/...`) を開くとスクレイピングが成功する
+- [ ] ポップアップに同期結果 (`N 冊を同期しました`) が表示される
+- [ ] Web アプリでログアウトすると、ポップアップが「未ログイン」に戻る
 
 ## テスト
 

@@ -19,44 +19,75 @@
 
 ユーザーが Web アプリにログインし、その後 Chrome 拡張機能がそのセッションを利用できるようになるまでの流れ。
 
-Supabase Auth は PKCE フローを使用し、Web 側は cookie ベースのセッション、拡張機能側は `chrome.storage.session` にアクセストークンを保存する。
+Supabase Auth は PKCE フローを使用する。Web 側は cookie ベースのセッション、拡張機能側は `chrome.storage.session` にアクセストークンを保存する。Web から拡張機能へのトークン受け渡しには Chrome 公式の `externally_connectable` + `chrome.runtime.sendMessage` を用いる。
 
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant Web as Web App<br/>(Next.js)
-    participant Auth as Supabase Auth
-    participant Callback as /auth/callback<br/>(Edge Route)
-    participant Ext as Chrome Extension<br/>(Background)
+    participant Login as LoginForm<br/>(Client Component)
+    participant Auth as Supabase Auth<br/>(Google OAuth)
+    participant Callback as /auth/callback<br/>(Route Handler)
+    participant Layout as (protected)/layout<br/>(Server Component)
+    participant Bridge as ExtensionTokenBridge<br/>(Client Component)
+    participant Sync as syncTokenOnAuthChange
+    participant Sender as sendTokenToExtension
+    participant BG as Background SW<br/>(onMessageExternal)
     participant Storage as chrome.storage<br/>.session
 
-    User->>Web: /login にアクセス
-    Web->>User: ログインフォーム表示
-    User->>Web: 認証情報を入力
-    Web->>Auth: signInWithOAuth / signInWithPassword
-    Auth-->>Web: 認証 URL / セッション
-    Web->>User: Auth プロバイダへリダイレクト
+    User->>Login: /login にアクセス
+    Login->>Auth: signInWithOAuth('google')
+    Auth-->>User: Google 認証ページへリダイレクト
     User->>Auth: 認証同意
     Auth->>Callback: ?code=xxx でリダイレクト
     Callback->>Auth: exchangeCodeForSession(code)
     Auth-->>Callback: セッション (cookie に保存)
     Callback->>User: /bookshelf へリダイレクト
 
-    Note over Web,Ext: ── 拡張機能へのトークン共有 ──
+    Note over Layout,Storage: ── 保護レイアウトでのトークン同期 ──
 
-    User->>Web: /bookshelf 表示
-    Web->>Web: getSession() でアクセストークン取得
-    Web->>Ext: window.postMessage<br/>or chrome.runtime.sendMessage<br/>(access_token)
-    Ext->>Storage: setAccessToken(token)
-    Storage-->>Ext: OK
-    Ext-->>Web: 保存完了
+    User->>Layout: /bookshelf (RSC)
+    Layout->>Layout: getUser() で認証確認
+    Layout-->>User: HTML + ExtensionTokenBridge を含む
+    User->>Bridge: マウント (useEffect 発火)
+    Bridge->>Auth: supabase.auth.getSession()
+    Auth-->>Bridge: session (access_token)
+    Bridge->>Sync: syncTokenOnAuthChange('INITIAL_SESSION', session)
+    Sync->>Sender: sendTokenToExtension(token)
+    Sender->>BG: chrome.runtime.sendMessage<br/>(EXTENSION_ID, {type:'SET_ACCESS_TOKEN', token})
+    BG->>BG: isAllowedOrigin(sender.origin) 検証
+    BG->>BG: Zod バリデーション
+    BG->>Storage: setAccessToken(token)
+    Storage-->>BG: OK
+    BG-->>Sender: {success: true}
+
+    Note over Bridge,Storage: ── セッション更新時の再同期 ──
+
+    Auth-->>Bridge: onAuthStateChange('TOKEN_REFRESHED', session)
+    Bridge->>Sync: syncTokenOnAuthChange('TOKEN_REFRESHED', session)
+    Sync->>Sender: sendTokenToExtension(newToken)
+    Sender->>BG: SET_ACCESS_TOKEN で再送
+    BG->>Storage: setAccessToken(newToken) で上書き
+
+    Note over Bridge,Storage: ── ログアウト ──
+
+    User->>Bridge: ログアウト操作
+    Auth-->>Bridge: onAuthStateChange('SIGNED_OUT', null)
+    Bridge->>Sync: syncTokenOnAuthChange('SIGNED_OUT', null)
+    Sync->>Sender: sendTokenToExtension(null)
+    Sender->>BG: CLEAR_ACCESS_TOKEN
+    BG->>Storage: removeAccessToken()
 ```
 
 ### ポイント
 
-- `apps/web/app/auth/callback/route.ts` で PKCE の `code` を `exchangeCodeForSession` に渡し、セッションを cookie に保存する
-- 拡張機能は Supabase の cookie を直接読み取れないため、Web App 側からアクセストークンを受け渡してもらう必要がある
-- トークンは `chrome.storage.session` に保存され、ブラウザ終了時にクリアされる（永続化しない）
+- **PKCE コード交換**: `apps/web/app/auth/callback/route.ts` で `exchangeCodeForSession` を実行し、セッションを cookie に保存
+- **`ExtensionTokenBridge`**: `apps/web/components/auth/extension-token-bridge.tsx` は Client Component で、`app/(protected)/layout.tsx` に配置される。`useEffect` 内で `getSession()` による初期同期と `onAuthStateChange` 購読を行う
+- **Chrome 公式経路**: 拡張機能は Supabase の cookie を直接読めないため、`externally_connectable.matches` に登録された Web オリジンからの `chrome.runtime.sendMessage` で通信する
+- **オリジン検証**: Background の `handleExternalMessage` は `sender.origin` を `__ALLOWED_EXTERNAL_ORIGINS__` (vite define 経由で注入) で厳密一致検証する
+- **トークン保存**: `chrome.storage.session` に保存し、ブラウザ終了時にクリアされる (永続化しない)
+- **`TOKEN_REFRESHED` での再送**: Supabase の自動トークン更新時も Bridge が検知して拡張機能側を最新化する
+- **ブラウザ互換**: `sendTokenToExtension` は `chrome` 未定義 (Firefox/Safari/SSR) や拡張機能未インストール時は no-op で安全にスキップする
+- **Extension ID 固定化**: CRXJS の `publicKey` オプション (`CRX_PUBLIC_KEY` 環境変数経由) で dev/staging の Extension ID を固定し、Web アプリ側の `NEXT_PUBLIC_EXTENSION_ID` と一致させる
 
 ---
 
