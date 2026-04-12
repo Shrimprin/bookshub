@@ -187,8 +187,17 @@ function findPageLinkByNumber(pageNum: number): HTMLElement | null {
   }
 
   // 2. フォールバック: document 全体から (Amazon の DOM 変更で container 検出が
-  //    失敗したケース向け)。範囲は広いが children.length 制限で誤検知を抑える
-  return findPageLinkInContainer(document.body, target)
+  //    失敗したケース向け)。範囲は広いが children.length 制限で誤検知を抑える。
+  //    フォールバックに到達した = pagination セレクタが Amazon DOM 変更で機能して
+  //    いない可能性が高いので警告を出す (誤クリックで意図しないナビゲーションを
+  //    引き起こす前に運用側で気付けるように)
+  const fallback = findPageLinkInContainer(document.body, target)
+  if (fallback) {
+    console.warn(
+      `${LOG_PREFIX} pagination container selectors failed; using document.body fallback for page ${pageNum}. Amazon DOM may have changed`,
+    )
+  }
+  return fallback
 }
 
 function findPageLinkInContainer(container: Element, target: string): HTMLElement | null {
@@ -209,6 +218,11 @@ function findPageLinkInContainer(container: Element, target: string): HTMLElemen
 
 // テスト時に差し替え可能にするため _internals オブジェクト経由で呼ぶ
 // (ESM では vi.spyOn で named export を直接 spy できないため)
+//
+// SECURITY: navigateTo に渡す URL は必ず `currentUrl = window.location.href` から
+// buildPageUrl で構築すること。session.originalUrl など storage 由来の値は
+// `javascript:` / `data:` 等の任意 URL に改ざんされうるため navigate には使わない。
+// originalUrl は loadOrCreateSession の比較 (===) でのみ使用する。
 export const _internals = {
   navigateTo(url: string): void {
     window.location.href = url
@@ -345,7 +359,9 @@ export async function main(): Promise<void> {
   const rawBooks = scrapeKindleBooks()
   if (rawBooks.length === 0) {
     console.warn(`${LOG_PREFIX} 0 books extracted on page ${currentPage}`)
-    if (currentPage === 1) {
+    // 診断ログは Amazon の DOM (アカウント情報・CSRF token 等を含み得る) を
+    // outerHTML で console に出力するため、開発ビルド時のみ有効にする
+    if (currentPage === 1 && __IS_DEV__) {
       logCardStructureDiagnostics()
     }
   }

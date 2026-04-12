@@ -27,6 +27,13 @@ export default defineConfig(async ({ mode }) => {
     if (!apiUrl.startsWith('https://')) {
       throw new Error('BOOKHUB_API_URL must use HTTPS for production builds')
     }
+    // 本番ビルド時に Web アプリのオリジンが未設定だと、externally_connectable
+    // が空配列になり Web→拡張機能のトークン受け渡しがサイレントに失敗する
+    if (!process.env.BOOKHUB_ALLOWED_WEB_ORIGINS) {
+      throw new Error(
+        'BOOKHUB_ALLOWED_WEB_ORIGINS must be set for production builds (e.g. "https://bookhub.pages.dev/*")',
+      )
+    }
   }
 
   // externally_connectable で許可するオリジン一覧
@@ -42,6 +49,7 @@ export default defineConfig(async ({ mode }) => {
     define: {
       __API_BASE_URL__: JSON.stringify(apiUrl),
       __ALLOWED_EXTERNAL_ORIGINS__: JSON.stringify(allowedExternalOrigins),
+      __IS_DEV__: JSON.stringify(!isProduction),
     },
     server: {
       cors: {

@@ -36,16 +36,25 @@ export async function setLastSyncResult(syncResult: SyncResult): Promise<void> {
 // runtime 型ガード: 部分書き込みやスキーマ変更で構造が崩れた値を検出する。
 // books / seenKeys が undefined のまま使われると mergeBooks や Set コンストラクタで
 // 静かに壊れるため、構造チェックで弾いて null 扱いにする。
+//
+// 配列要素の型もチェックする: DevTools 等で storage が改ざんされた場合に
+// books に null や非オブジェクトが混入していると、後段の mergeBooks で
+// `${book.title}|...` が "undefined|..." となり dedup が破綻する。
+function isScrapeBookLike(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const b = value as Record<string, unknown>
+  return typeof b.title === 'string' && typeof b.author === 'string'
+}
+
 function isScrapeSession(value: unknown): value is ScrapeSession {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
-  return (
-    typeof v.startedAt === 'number' &&
-    typeof v.originalUrl === 'string' &&
-    typeof v.lastPageScraped === 'number' &&
-    Array.isArray(v.books) &&
-    Array.isArray(v.seenKeys)
-  )
+  if (typeof v.startedAt !== 'number') return false
+  if (typeof v.originalUrl !== 'string') return false
+  if (typeof v.lastPageScraped !== 'number') return false
+  if (!Array.isArray(v.books) || !v.books.every(isScrapeBookLike)) return false
+  if (!Array.isArray(v.seenKeys) || !v.seenKeys.every((k) => typeof k === 'string')) return false
+  return true
 }
 
 export async function getScrapeSession(): Promise<ScrapeSession | null> {

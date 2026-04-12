@@ -139,6 +139,72 @@ describe('storage', () => {
       const result = await storage.getScrapeSession()
       expect(result).toEqual(session)
     })
+
+    it('startedAt が文字列の不正データは null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: '1700000000000',
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: [],
+      })
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('books が配列でない不正データは null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: 'not-an-array',
+        seenKeys: [],
+      })
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('books に null 要素を含む不正データは null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [null, { title: 'ok', author: 'ok' }],
+        seenKeys: [],
+      })
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('books に title が文字列でない要素を含む不正データは null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [{ title: 123, author: 'ok' }],
+        seenKeys: [],
+      })
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('seenKeys に非文字列要素を含む不正データは null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: 1700000000000,
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 2,
+        books: [],
+        seenKeys: ['ok', 123],
+      })
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
+
+    it('null は null を返す', async () => {
+      mockStorage.set('bookhub_scrape_session_v1', null)
+      const result = await storage.getScrapeSession()
+      expect(result).toBeNull()
+    })
   })
 
   describe('setScrapeSession', () => {

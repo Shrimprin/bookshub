@@ -135,7 +135,10 @@ describe('popup main', () => {
         startedAt: Date.now(),
         originalUrl: 'https://www.amazon.co.jp/foo',
         lastPageScraped: 3,
-        books: [{ title: 'a' }, { title: 'b' }],
+        books: [
+          { title: 'a', author: 'x' },
+          { title: 'b', author: 'y' },
+        ],
         seenKeys: [],
       })
       const progressEl = document.createElement('div')

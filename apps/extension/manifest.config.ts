@@ -1,9 +1,16 @@
 import { defineManifest } from '@crxjs/vite-plugin'
 
 // TODO(本番ドメイン確定後): production モードの externally_connectable.matches に
-// Cloudflare Pages の URL (例: 'https://bookhub.pages.dev/*') を追加すること
+// Cloudflare Pages の URL (例: 'https://bookhub.pages.dev/*') を追加すること。
+// PROD_ALLOWED_ORIGINS が空のまま production ビルドを行うと、Web→拡張機能の
+// トークン受け渡し (chrome.runtime.onMessageExternal) が一切動かなくなり、
+// すべてのスクレイプ操作が AUTH_ERROR を返す。
+// 環境変数 BOOKHUB_ALLOWED_WEB_ORIGINS (カンマ区切り) で指定可能。
 const DEV_ALLOWED_ORIGINS = ['http://localhost:3000/*']
-const PROD_ALLOWED_ORIGINS: string[] = []
+const PROD_ALLOWED_ORIGINS: string[] = (process.env.BOOKHUB_ALLOWED_WEB_ORIGINS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0)
 
 // Extension ID を dev/staging で固定化するための公開鍵 (base64)。
 // vite.config.ts の loadEnv() 経由で process.env に注入される想定。

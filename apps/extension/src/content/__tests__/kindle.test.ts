@@ -2,6 +2,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { SendScrapedBooksResponse } from '../../types/messages.js'
 
+// vite define の代替 (テスト時)
+vi.stubGlobal('__IS_DEV__', true)
+vi.stubGlobal('__ALLOWED_EXTERNAL_ORIGINS__', ['http://localhost:3000'])
+vi.stubGlobal('__API_BASE_URL__', 'http://localhost:3000')
+
 // --- chrome API モック ---
 const mockSendMessage = vi.fn()
 const mockStorage = new Map<string, unknown>()

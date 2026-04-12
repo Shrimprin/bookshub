@@ -163,7 +163,7 @@ describe('background', () => {
         )
       })
 
-      it('API が 401 を返す場合 AUTH_ERROR を返す', async () => {
+      it('API が 401 を返す場合 AUTH_ERROR を返し、storage からトークンを削除する', async () => {
         mockFetch.mockResolvedValue({
           ok: false,
           status: 401,
@@ -181,6 +181,8 @@ describe('background', () => {
           error: '認証エラー: 再ログインが必要です',
           code: 'AUTH_ERROR',
         })
+        // 期限切れトークンが storage から削除されることを確認
+        expect(mockStorageData.has('bookhub_access_token')).toBe(false)
       })
 
       it('API が 400 を返す場合 VALIDATION_ERROR を返す', async () => {

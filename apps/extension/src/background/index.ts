@@ -138,6 +138,10 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
   // 4. レスポンスハンドリング
   if (!response.ok) {
     if (response.status === 401) {
+      // 期限切れトークンを storage から削除して、次回 sendScrapedBooks 時に
+      // 早期 return (token === null) で AUTH_ERROR を返せるようにする。
+      // これにより popup の「ログイン中」表示も「未ログイン」に切り替わる。
+      await removeAccessToken()
       return { success: false, error: '認証エラー: 再ログインが必要です', code: 'AUTH_ERROR' }
     }
     if (response.status === 400) {
