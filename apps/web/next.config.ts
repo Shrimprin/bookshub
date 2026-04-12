@@ -1,26 +1,26 @@
 import type { NextConfig } from 'next'
+import { ALLOWED_THUMBNAIL_HOSTS } from '@bookhub/shared'
 
-// 書影として許可する画像ホスト一覧。
-// packages/shared/src/schemas/book-schema.ts の ALLOWED_THUMBNAIL_HOSTS と同期させる。
-const ALLOWED_IMG_HOSTS = [
-  'https://m.media-amazon.com',
-  'https://images-na.ssl-images-amazon.com',
-  'https://images-fe.ssl-images-amazon.com',
-  'https://pics.dmm.co.jp',
-  'https://p.dmm.co.jp',
-  'https://thumbnail.image.rakuten.co.jp',
-  'https://books.google.com',
-].join(' ')
+// 書影として許可する画像ホスト一覧は @bookhub/shared から import して
+// サーバー側スキーマ (POST 時の validate) と CSP img-src を単一ソースで同期する。
+const IMG_HOSTS_CSP = ALLOWED_THUMBNAIL_HOSTS.map((host) => `https://${host}`).join(' ')
 
+// TODO(#issue-TBD): script-src 'unsafe-inline' を nonce 方式に置き換える。
+// Next.js App Router の RSC ハイドレーションには現状インラインスクリプトが
+// 必要で、middleware で per-request nonce を生成して style/script に差し込む
+// リファクタが必要。今 PR では他の CSP ディレクティブの強化に留める。
 const CSP_VALUE = [
   "default-src 'self'",
-  `img-src 'self' data: ${ALLOWED_IMG_HOSTS}`,
+  `img-src 'self' data: ${IMG_HOSTS_CSP}`,
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "connect-src 'self' https://*.supabase.co",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  "object-src 'none'",
+  "worker-src 'none'",
 ].join('; ')
 
 const nextConfig: NextConfig = {

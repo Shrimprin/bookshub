@@ -3,7 +3,8 @@ import { z } from 'zod'
 export const storeSchema = z.enum(['kindle', 'dmm', 'other'])
 
 // thumbnailUrl で許可するホスト一覧（ストア追加時にここへ追記）
-const ALLOWED_THUMBNAIL_HOSTS = [
+// Web 側の CSP img-src も同じ値を参照するため export されている。
+export const ALLOWED_THUMBNAIL_HOSTS = [
   'm.media-amazon.com',
   'images-na.ssl-images-amazon.com',
   'images-fe.ssl-images-amazon.com',
@@ -11,7 +12,7 @@ const ALLOWED_THUMBNAIL_HOSTS = [
   'p.dmm.co.jp',
   'thumbnail.image.rakuten.co.jp',
   'books.google.com',
-]
+] as const
 
 export const thumbnailUrlSchema = z
   .string()
