@@ -11,8 +11,11 @@ const mockTabs = [
   { id: 2, url: 'https://www.amazon.co.jp/kindle' },
 ]
 
+const EXTENSION_ID = 'test-extension-id'
+
 vi.stubGlobal('chrome', {
   runtime: {
+    id: EXTENSION_ID,
     onInstalled: { addListener: vi.fn() },
     onMessage: { addListener: vi.fn() },
     lastError: null,
@@ -70,7 +73,7 @@ describe('background', () => {
     },
   ]
 
-  const mockSender: chrome.runtime.MessageSender = { id: 'test-extension-id' }
+  const mockSender: chrome.runtime.MessageSender = { id: EXTENSION_ID }
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -324,6 +327,39 @@ describe('background', () => {
           status: 'partial',
           savedCount: 0,
           duplicateCount: 3,
+        })
+      })
+    })
+
+    describe('sender validation', () => {
+      it('sender.id が自拡張機能と異なる場合 UNKNOWN_ERROR を返す', async () => {
+        const foreignSender: chrome.runtime.MessageSender = { id: 'foreign-extension-id' }
+        const message: SendScrapedBooksMessage = {
+          type: 'SEND_SCRAPED_BOOKS',
+          books: testBooks,
+        }
+
+        const result = await handleMessage(message, foreignSender)
+        expect(result).toEqual({
+          success: false,
+          error: '不正な送信元です',
+          code: 'UNKNOWN_ERROR',
+        })
+        // fetch が呼ばれていないことを確認
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('sender.id が undefined の場合 UNKNOWN_ERROR を返す', async () => {
+        const noIdSender: chrome.runtime.MessageSender = {}
+
+        const result = await handleMessage(
+          { type: 'SEND_SCRAPED_BOOKS', books: testBooks },
+          noIdSender,
+        )
+        expect(result).toEqual({
+          success: false,
+          error: '不正な送信元です',
+          code: 'UNKNOWN_ERROR',
         })
       })
     })

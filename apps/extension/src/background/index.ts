@@ -22,8 +22,13 @@ function isValidMessage(message: unknown): message is ExtensionMessage {
 
 export async function handleMessage(
   message: unknown,
-  _sender: chrome.runtime.MessageSender, // eslint-disable-line @typescript-eslint/no-unused-vars
+  sender: chrome.runtime.MessageSender,
 ): Promise<MessageResponse<ScrapeResponse>> {
+  // 自拡張機能からのメッセージのみ受け付ける
+  if (sender.id !== chrome.runtime.id) {
+    return { success: false, error: '不正な送信元です', code: 'UNKNOWN_ERROR' }
+  }
+
   if (!isValidMessage(message)) {
     return { success: false, error: '不正なメッセージ形式です', code: 'UNKNOWN_ERROR' }
   }
