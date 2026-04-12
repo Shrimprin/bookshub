@@ -17,11 +17,12 @@ export function BookSearchForm({ defaultValue }: BookSearchFormProps) {
   const [value, setValue] = useState(defaultValue)
   const [isPending, startTransition] = useTransition()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isFirstRender = useRef(true)
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
+    // defaultValue と一致する値は URL 由来 (初回 mount やナビゲーション後) なので
+    // 再度 router.replace を呼ぶ必要がない。これで StrictMode の二重 mount でも
+    // 不要なナビゲーションが走らない。
+    if (value === defaultValue) {
       return
     }
 
@@ -45,10 +46,10 @@ export function BookSearchForm({ defaultValue }: BookSearchFormProps) {
         clearTimeout(timerRef.current)
       }
     }
-  }, [value, pathname, router])
+  }, [value, defaultValue, pathname, router])
 
   return (
-    <div className="mb-6" aria-busy={isPending}>
+    <div className="mb-6">
       <label htmlFor="bookshelf-search" className="sr-only">
         タイトル・著者で検索
       </label>
@@ -59,6 +60,7 @@ export function BookSearchForm({ defaultValue }: BookSearchFormProps) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         className="max-w-md"
+        aria-busy={isPending}
       />
     </div>
   )
