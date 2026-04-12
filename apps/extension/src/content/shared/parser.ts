@@ -13,6 +13,9 @@ const VOLUME_PATTERNS: RegExp[] = [
   /[（(](\d{1,3})[）)]/,
   /\s+Vol\.(\d+)/i,
   /\s+vol\s+(\d+)/i,
+  // フォールバック: タイトル末尾の裸の数字 (例: 「チェンソーマン 17」)
+  // 先頭 3 文字以上のテキストが必要なので「3月のライオン」等の誤検知を避ける
+  /.{3,}\s+(\d{1,3})$/,
 ]
 
 export function extractVolumeNumber(title: string): number | undefined {

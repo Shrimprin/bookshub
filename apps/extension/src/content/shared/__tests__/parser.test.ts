@@ -32,6 +32,14 @@ describe('extractVolumeNumber', () => {
   ])('年号・コード "%s" は巻数として抽出しない → %s', (title, expected) => {
     expect(extractVolumeNumber(title)).toBe(expected)
   })
+
+  it.each([
+    ['チェンソーマン 17', 17],
+    ['SPY×FAMILY 13', 13],
+    ['ワンピース 107', 107],
+  ])('タイトル末尾の裸の数字 "%s" → %i', (title, expected) => {
+    expect(extractVolumeNumber(title)).toBe(expected)
+  })
 })
 
 describe('extractSeriesTitle', () => {

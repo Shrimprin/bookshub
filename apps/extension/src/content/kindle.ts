@@ -147,6 +147,107 @@ function logCardStructureDiagnostics(): void {
   }
 }
 
+// 次ページボタンを探す。Amazon の DOM は頻繁に変わるため複数戦略を使う。
+function findNextPageButton(): HTMLElement | null {
+  const candidates: (HTMLElement | null)[] = [
+    document.querySelector<HTMLElement>('#pagination-button-next-page-index'),
+    document.querySelector<HTMLElement>('[aria-label="Next"]'),
+    document.querySelector<HTMLElement>('[aria-label="次のページ"]'),
+    document.querySelector<HTMLElement>('[aria-label*="次"]'),
+    document.querySelector<HTMLElement>('[aria-label*="Next"]'),
+  ]
+  for (const c of candidates) {
+    if (c) return c
+  }
+  return null
+}
+
+function isButtonDisabled(button: HTMLElement): boolean {
+  if (button.hasAttribute('disabled')) return true
+  if (button.getAttribute('aria-disabled') === 'true') return true
+  if (button.classList.contains('a-disabled')) return true
+  if (button.classList.contains('disabled')) return true
+  const parent = button.parentElement
+  if (parent?.classList.contains('a-disabled')) return true
+  return false
+}
+
+// 現在のページの最初の titleCard の id を記録し、クリック後に変わるのを待つ
+function waitForPageChange(previousFirstId: string, timeout = 10_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const check = () => {
+      const first = document.querySelector<HTMLElement>(SELECTORS.titleCard)
+      if (first && first.id !== previousFirstId) {
+        observer.disconnect()
+        clearTimeout(timer)
+        resolve(true)
+        return true
+      }
+      return false
+    }
+
+    if (check()) return
+
+    const observer = new MutationObserver(() => {
+      check()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    const timer = setTimeout(() => {
+      observer.disconnect()
+      resolve(false)
+    }, timeout)
+  })
+}
+
+async function scrapeAllPages(maxPages = 50): Promise<RawBookData[]> {
+  const allBooks: RawBookData[] = []
+  const seen = new Set<string>()
+
+  for (let page = 1; page <= maxPages; page++) {
+    const pageBooks = scrapeKindleBooks()
+    let newCount = 0
+    for (const book of pageBooks) {
+      const key = `${book.title}|${book.author}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        allBooks.push(book)
+        newCount++
+      }
+    }
+    console.log(
+      `${LOG_PREFIX} page ${page}: scraped ${pageBooks.length} items (+${newCount} new, total ${allBooks.length})`,
+    )
+
+    const nextButton = findNextPageButton()
+    if (!nextButton) {
+      console.log(`${LOG_PREFIX} no next button found on page ${page}, stopping`)
+      break
+    }
+    if (isButtonDisabled(nextButton)) {
+      console.log(`${LOG_PREFIX} next button disabled on page ${page}, reached last page`)
+      break
+    }
+
+    const firstCardBefore = document.querySelector<HTMLElement>(SELECTORS.titleCard)
+    const previousFirstId = firstCardBefore?.id ?? ''
+    console.log(`${LOG_PREFIX} clicking next button (previousFirstId=${previousFirstId})`)
+    nextButton.click()
+
+    const changed = await waitForPageChange(previousFirstId, 10_000)
+    if (!changed) {
+      console.warn(
+        `${LOG_PREFIX} DOM did not change within 10s after clicking next, stopping at page ${page}`,
+      )
+      break
+    }
+    // DOM 更新後に念のため軽く待つ (遅延ロードの画像や著者要素の追加を待つ)
+    await new Promise((r) => setTimeout(r, 500))
+  }
+
+  return allBooks
+}
+
 export async function main(): Promise<void> {
   console.log(`${LOG_PREFIX} content script loaded at ${window.location.href}`)
 
@@ -163,15 +264,23 @@ export async function main(): Promise<void> {
     return
   }
 
-  const rawBooks = scrapeKindleBooks()
+  const rawBooks = await scrapeAllPages()
   if (rawBooks.length === 0) {
-    console.warn(`${LOG_PREFIX} 0 books extracted, dumping card structure for investigation`)
+    console.warn(`${LOG_PREFIX} 0 books extracted across all pages, dumping diagnostics`)
     logCardStructureDiagnostics()
     return
   }
 
   const books = parseBooks(rawBooks, 'kindle')
-  console.log(`${LOG_PREFIX} parsed ${books.length} books, sending to background`)
+  console.log(
+    `${LOG_PREFIX} parsed ${books.length} books (${books.filter((b) => b.volumeNumber !== undefined).length} with volume, ${books.filter((b) => b.volumeNumber === undefined).length} without)`,
+  )
+  // 最初の 5 件のパース結果をダンプして volume 抽出を検証可能にする
+  console.log(
+    `${LOG_PREFIX} sample:`,
+    books.slice(0, 5).map((b) => ({ title: b.title, volume: b.volumeNumber, author: b.author })),
+  )
+  console.log(`${LOG_PREFIX} sending to background...`)
 
   try {
     const response = await sendScrapedBooks(books)
