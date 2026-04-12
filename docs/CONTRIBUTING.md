@@ -67,10 +67,15 @@ cp .env.example apps/web/.env.local
 
 ### apps/extension
 
-| コマンド                        | 説明                             |
-| ------------------------------- | -------------------------------- |
-| `pnpm --filter extension dev`   | 拡張機能の開発ビルド（HMR あり） |
-| `pnpm --filter extension build` | 拡張機能の本番ビルド             |
+| コマンド                                | 説明                                                    |
+| --------------------------------------- | ------------------------------------------------------- |
+| `pnpm --filter extension dev`           | 拡張機能の開発ビルド（HMR あり、localhost:3000 を使用） |
+| `pnpm --filter extension build`         | 拡張機能の開発用ビルド（`--mode development`）          |
+| `pnpm --filter extension build:prod`    | 拡張機能の本番ビルド（`--mode production`、HTTPS 必須） |
+| `pnpm --filter extension lint`          | ESLint でコード品質をチェック                           |
+| `pnpm --filter extension test`          | ユニットテストを実行                                    |
+| `pnpm --filter extension test:watch`    | ユニットテストをウォッチモードで実行                    |
+| `pnpm --filter extension test:coverage` | テストカバレッジレポート生成                            |
 
 ### packages/shared
 
@@ -79,6 +84,8 @@ cp .env.example apps/web/.env.local
 | `pnpm --filter @bookhub/shared build` | 型定義・スキーマをビルド |
 
 ## 環境変数リファレンス
+
+### Web アプリ （apps/web）
 
 <!-- AUTO-GENERATED: generated from .env.example -->
 
@@ -92,6 +99,28 @@ cp .env.example apps/web/.env.local
 
 \*書籍情報 API はどちらか一方が必要
 
+### Chrome 拡張機能 （apps/extension）
+
+| 変数              | 必須  | 説明                                                       |
+| ----------------- | ----- | ---------------------------------------------------------- |
+| `BOOKHUB_API_URL` | Yes\* | Web API ベース URL（ビルド時に指定、ビルドに埋め込まれる） |
+
+\* 開発時: `localhost:3000`、本番ビルド時: HTTPS な本番 URL（必須）
+
+#### 設定方法
+
+**開発時:**
+
+```bash
+BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
+```
+
+**本番ビルド時:**
+
+```bash
+BOOKHUB_API_URL=https://bookshelf.example.com pnpm --filter extension build:prod
+```
+
 <!-- /AUTO-GENERATED -->
 
 ## テスト
@@ -104,6 +133,7 @@ pnpm test
 
 # 特定のパッケージのみ実行
 pnpm --filter web test
+pnpm --filter extension test
 pnpm --filter @bookhub/shared test
 
 # ウォッチモード（ファイル変更時に自動再実行）
@@ -127,6 +157,30 @@ pnpm test:coverage
 | **Unit**        | 関数・クラス         | `processScrapePayload()`, Zod スキーマ検証                 |
 | **Integration** | API エンドポイント   | `POST /api/scrape` の認証 + バリデーション + Supabase 連携 |
 | **Middleware**  | Next.js ミドルウェア | Cookie 認証、ルート保護                                    |
+| **Extension**   | Chrome 拡張機能      | メッセージハンドリング、ストレージ操作、API 通信           |
+
+### Chrome 拡張機能テスト
+
+拡張機能のテストでは、`chrome` グローバルオブジェクトをモック化して実行します：
+
+```bash
+# 拡張機能テストの実行
+pnpm --filter extension test
+
+# ウォッチモード
+pnpm --filter extension test:watch
+
+# カバレッジレポート
+pnpm --filter extension test:coverage
+```
+
+**テスト範囲:**
+
+- Service Worker メッセージハンドリング
+- Content Script ↔ Background 通信
+- Token ライフサイクル（取得・保存・削除）
+- API エラーハンドリング（401/400/500）
+- 本棚タブリロード動作
 
 ## API エンドポイントリファレンス
 
@@ -350,6 +404,47 @@ Authorization: Bearer <token>
 - husky の pre-commit フックにより、コミット時に `pnpm lint` と `pnpm format:check` が自動実行される
 - コミット前に `pnpm fix` を実行して問題を解消しておくことを推奨
 
+## Extension 開発ガイド
+
+### メッセージ型定義
+
+Content Script と Service Worker の通信は `src/types/messages.ts` で定義された型セーフなメッセージを使用します：
+
+```typescript
+// Content Script から送信
+const response = await sendScrapedBooks(books)
+
+// Service Worker で受信
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender).then(sendResponse)
+  return true // 非同期レスポンス有効化
+})
+```
+
+### ストレージ操作
+
+トークン・同期結果の保存は `src/utils/storage.ts` の関数を使用：
+
+```typescript
+// トークン取得
+const token = await getAccessToken()
+
+// 同期結果保存
+await setLastSyncResult({ status: 'success', savedCount: 1, ... })
+```
+
+### ローカルテスト
+
+```bash
+# 1. Web アプリをローカル実行
+NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=... pnpm --filter web dev
+
+# 2. 拡張機能を開発ビルド
+BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
+
+# 3. Chrome で chrome://extensions を開き、dist/ フォルダをロード
+```
+
 ## PR チェックリスト
 
 - [ ] `pnpm build` が通る
@@ -358,3 +453,8 @@ Authorization: Bearer <token>
 - [ ] `pnpm format:check` が通る
 - [ ] 関連 Issue 番号をコミットメッセージまたは PR 本文に記載
 - [ ] API エンドポイント変更の場合は本セクションの「API エンドポイントリファレンス」を更新
+- [ ] Chrome 拡張機能変更の場合は以下を確認：
+  - [ ] メッセージ型定義が `src/types/messages.ts` で正しく定義されている
+  - [ ] `handleMessage()` の sender.id 検証が実装されている
+  - [ ] エラーハンドリング（AUTH_ERROR/VALIDATION_ERROR/API_ERROR）が完備されている
+  - [ ] Storage 操作に `src/utils/storage.ts` の関数を使用している
