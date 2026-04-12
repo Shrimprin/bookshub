@@ -10,6 +10,12 @@ const PROD_ALLOWED_ORIGINS: string[] = []
 // 未設定の場合 key フィールドは omit される (ID が毎回変わる)。
 const crxPublicKey = process.env.CRX_PUBLIC_KEY
 
+// BOOKHUB_API_URL (Background が /api/scrape に POST する先) を host_permissions に
+// 追加する。これがないと Chrome の CORS/セキュリティチェックで接続が切断される。
+// URL の末尾に `/*` を付けて match pattern にする。
+const apiBaseUrl = process.env.BOOKHUB_API_URL || 'http://localhost:3000'
+const apiHostPermission = apiBaseUrl.replace(/\/$/, '') + '/*'
+
 export default defineManifest((env) => ({
   manifest_version: 3,
   name: 'BookHub',
@@ -19,7 +25,7 @@ export default defineManifest((env) => ({
   ...(env.mode !== 'production' && crxPublicKey ? { key: crxPublicKey } : {}),
   // activeTab は現状不使用だが、将来的に手動スクレイピングトリガーで必要になる可能性あり
   permissions: ['storage', 'tabs'],
-  host_permissions: ['https://www.amazon.co.jp/*', 'https://book.dmm.com/*'],
+  host_permissions: ['https://www.amazon.co.jp/*', 'https://book.dmm.com/*', apiHostPermission],
   externally_connectable: {
     matches: env.mode === 'production' ? PROD_ALLOWED_ORIGINS : DEV_ALLOWED_ORIGINS,
   },

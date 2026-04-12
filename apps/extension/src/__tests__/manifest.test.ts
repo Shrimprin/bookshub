@@ -51,4 +51,19 @@ describe('manifest.config', () => {
       expect(manifest.permissions).toContain('tabs')
     })
   })
+
+  describe('host_permissions', () => {
+    it('Amazon と DMM を含む', () => {
+      const manifest = resolveManifest('development')
+      expect(manifest.host_permissions).toContain('https://www.amazon.co.jp/*')
+      expect(manifest.host_permissions).toContain('https://book.dmm.com/*')
+    })
+
+    it('API ベース URL を含む (Chrome の CORS バイパスのため)', () => {
+      const manifest = resolveManifest('development')
+      // BOOKHUB_API_URL 未設定時のデフォルトは http://localhost:3000/*
+      const apiHost = (process.env.BOOKHUB_API_URL || 'http://localhost:3000') + '/*'
+      expect(manifest.host_permissions).toContain(apiHost)
+    })
+  })
 })
