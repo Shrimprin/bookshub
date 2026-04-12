@@ -54,13 +54,13 @@ MVP対象外（フェーズ2以降）:
 ## Development Notes
 
 - `docs/README.md` — ドキュメント索引・クイックナビ
-- `docs/requirement_definition.md` — 要求定義書（ビジネス要件・機能要件・UX要件）
-- `docs/mvp.md` — MVP仕様（実装対象・対象外機能）
-- `docs/tech_stack.md` — 技術スタック定義書
-- `docs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
-- `docs/DB_SCHEMA.md` — データベーススキーマ定義（テーブル・RLS ポリシー）
-- `docs/openapi.yaml` — API 仕様書（OpenAPI 3.1.0）
-- `docs/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・テストガイド・PR チェックリスト
+- `docs/requirements/requirement_definition.md` — 要求定義書（ビジネス要件・機能要件・UX要件）
+- `docs/requirements/mvp.md` — MVP仕様（実装対象・対象外機能）
+- `docs/specs/tech_stack.md` — 技術スタック定義書
+- `docs/specs/architecture.md` — アーキテクチャ定義書（ディレクトリ構成・データフロー・設計判断の根拠）
+- `docs/specs/DB_SCHEMA.md` — データベーススキーマ定義(テーブル・RLS ポリシー)
+- `docs/specs/openapi.yaml` — API 仕様書（OpenAPI 3.1.0）
+- `docs/guides/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・テストガイド・PR チェックリスト
 - Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@opennextjs/cloudflare`の制約に注意。
 - 成人向けコンテンツと一般向けコンテンツは本棚を分離・隠蔽可能にする設計が必要。
 
