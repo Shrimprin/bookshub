@@ -45,6 +45,11 @@ vi.stubGlobal('chrome', {
 
 let nextAsinCounter = 0
 
+// 正しい Kindle ASIN 形式の合成 ID を生成する (B + 9 桁数字 = 10 桁)
+function nextAsin(): string {
+  return `B${String(nextAsinCounter++).padStart(9, '0')}`
+}
+
 // Amazon Kindle のコンテンツリストページ実 DOM 構造を模擬:
 //   <div class="card">                           ← 書籍カード全体
 //     <div id="content-title-<ASIN>"             ← タイトル要素
@@ -58,8 +63,9 @@ function createBookElement(opts: {
   title: string
   author: string
   thumbnailUrl?: string
+  asin?: string
 }): HTMLElement {
-  const asin = `B${String(nextAsinCounter++).padStart(9, '0')}`
+  const asin = opts.asin ?? nextAsin()
   const card = document.createElement('div')
   card.className = 'card'
 
@@ -150,16 +156,20 @@ describe('kindle', () => {
   })
 
   describe('scrapeKindleBooks', () => {
-    it('DOM から書籍データを抽出する', () => {
+    it('DOM から書籍データを抽出し、ASIN から書影 URL を組み立てる', () => {
       setupKindlePage([
         {
           title: 'ワンピース 107巻',
           author: '尾田栄一郎',
-          thumbnailUrl: 'https://m.media-amazon.com/images/I/test.jpg',
+          asin: 'B0CXXXXXX1',
+          // DOM 上の img.src は敢えて別ドメインに設定し、
+          // 実装が DOM img に依存していないことを確認する
+          thumbnailUrl: 'https://example.com/lazy-placeholder.png',
         },
         {
           title: '鬼滅の刃（23）',
           author: '吾峠呼世晴',
+          asin: 'B0CXXXXXX2',
         },
       ])
 
@@ -169,13 +179,39 @@ describe('kindle', () => {
       expect(result[0]).toEqual({
         title: 'ワンピース 107巻',
         author: '尾田栄一郎',
-        thumbnailUrl: 'https://m.media-amazon.com/images/I/test.jpg',
+        thumbnailUrl: 'https://m.media-amazon.com/images/P/B0CXXXXXX1.jpg',
       })
       expect(result[1]).toEqual({
         title: '鬼滅の刃（23）',
         author: '吾峠呼世晴',
-        thumbnailUrl: undefined,
+        thumbnailUrl: 'https://m.media-amazon.com/images/P/B0CXXXXXX2.jpg',
       })
+    })
+
+    it('ASIN が 10 桁の英数字形式でない場合は thumbnailUrl を undefined にする', () => {
+      document.body.innerHTML = ''
+      const list = document.createElement('div')
+      list.id = 'CONTENT_LIST'
+      const card = document.createElement('div')
+      const titleCard = document.createElement('div')
+      // content-title- で始まるが、ASIN 部分が 10 桁形式を満たさない
+      titleCard.id = 'content-title-invalid'
+      titleCard.className = 'digital_entity_title'
+      const heading = document.createElement('div')
+      heading.setAttribute('role', 'heading')
+      heading.textContent = 'テスト 1巻'
+      titleCard.appendChild(heading)
+      card.appendChild(titleCard)
+      const authorEl = document.createElement('div')
+      authorEl.className = 'digital_entity_author'
+      authorEl.textContent = 'テスト作者'
+      card.appendChild(authorEl)
+      list.appendChild(card)
+      document.body.appendChild(list)
+
+      const result = kindleModule.scrapeKindleBooks()
+      expect(result).toHaveLength(1)
+      expect(result[0]?.thumbnailUrl).toBeUndefined()
     })
 
     it('書籍要素がない場合は空配列を返す', () => {
@@ -231,7 +267,7 @@ describe('kindle', () => {
         {
           title: 'ワンピース 107巻',
           author: '尾田栄一郎',
-          thumbnailUrl: 'https://m.media-amazon.com/images/I/test.jpg',
+          asin: 'B0TESTXXX1',
         },
       ])
 
@@ -245,7 +281,7 @@ describe('kindle', () => {
             author: '尾田栄一郎',
             volumeNumber: 107,
             store: 'kindle',
-            thumbnailUrl: 'https://m.media-amazon.com/images/I/test.jpg',
+            thumbnailUrl: 'https://m.media-amazon.com/images/P/B0TESTXXX1.jpg',
             isAdult: false,
           },
         ],
