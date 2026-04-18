@@ -52,6 +52,7 @@ export async function processScrapePayload(
     const author = normalizeText(book.author)
 
     const existing = await findExistingBook(supabase, title, author, book.volumeNumber)
+    // existing があれば store_product_id の更新は行わない (Out of Scope: レガシー行の事後補完)
     const bookRow = existing ?? (await insertBook(supabase, book))
     resolvedBooks.push({ book, bookId: bookRow.id })
   }

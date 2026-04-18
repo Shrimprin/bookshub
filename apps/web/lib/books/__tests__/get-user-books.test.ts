@@ -49,6 +49,7 @@ const mockBookRow = {
     isbn: '9784088835099',
     published_at: '2024-03-04',
     is_adult: false,
+    store_product_id: 'B0ABCDEFGH',
     created_at: '2024-01-01T00:00:00Z',
   },
 }
@@ -78,11 +79,28 @@ describe('getUserBooks', () => {
       createdAt: '2024-01-01T00:00:00Z',
       userBookId: 'ub-1',
       store: 'kindle',
+      storeProductId: 'B0ABCDEFGH',
       userBookCreatedAt: '2024-03-04T00:00:00Z',
     })
     expect(result.total).toBe(1)
     expect(result.page).toBe(1)
     expect(result.limit).toBe(20)
+  })
+
+  it('store_product_id が NULL の行は storeProductId: null にマッピングされる', async () => {
+    const nullProductIdRow = {
+      ...mockBookRow,
+      books: { ...mockBookRow.books, store_product_id: null },
+    }
+    const supabase = createMockSupabase({
+      data: [nullProductIdRow],
+      count: 1,
+      error: null,
+    })
+
+    const result = await getUserBooks(supabase, userId, defaultQuery)
+
+    expect(result.books[0]?.storeProductId).toBeNull()
   })
 
   it('結果が空の場合、空配列を返す', async () => {

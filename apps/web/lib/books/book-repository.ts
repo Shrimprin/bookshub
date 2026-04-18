@@ -9,6 +9,7 @@ export interface BookRow {
   isbn: string | null
   published_at: string | null
   is_adult: boolean
+  store_product_id: string | null
 }
 
 interface InsertBookInput {
@@ -20,7 +21,11 @@ interface InsertBookInput {
   isbn?: string | undefined
   publishedAt?: string | undefined
   isAdult?: boolean | undefined
+  storeProductId?: string | undefined
 }
+
+const BOOK_COLUMNS =
+  'id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id'
 
 export function normalizeText(text: string): string {
   return text.trim().normalize('NFC')
@@ -32,11 +37,7 @@ export async function findExistingBook(
   author: string,
   volumeNumber: number | undefined,
 ): Promise<BookRow | null> {
-  let query = supabase
-    .from('books')
-    .select('id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult')
-    .eq('title', title)
-    .eq('author', author)
+  let query = supabase.from('books').select(BOOK_COLUMNS).eq('title', title).eq('author', author)
 
   if (volumeNumber === undefined) {
     query = query.is('volume_number', null)
@@ -63,8 +64,9 @@ export async function insertBook(
       isbn: book.isbn ?? null,
       published_at: book.publishedAt ?? null,
       is_adult: book.isAdult ?? false,
+      store_product_id: book.storeProductId ?? null,
     })
-    .select('id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult')
+    .select(BOOK_COLUMNS)
 
   if (error) {
     if (error.code === '23505') {

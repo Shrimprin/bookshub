@@ -14,6 +14,7 @@ interface UserBookWithBooks {
     isbn: string | null
     published_at: string | null
     is_adult: boolean
+    store_product_id: string | null
     created_at: string
   }
 }
@@ -43,7 +44,7 @@ export async function getUserBooks(
   let qb = supabase
     .from('user_books')
     .select(
-      'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, created_at)',
+      'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at)',
       { count: 'exact' },
     )
     // RLS と併せた defense in depth: RLS policy migration のバグや service_role
@@ -88,6 +89,7 @@ export async function getUserBooks(
     createdAt: row.books.created_at,
     userBookId: row.id,
     store: row.store as BookWithStore['store'],
+    storeProductId: row.books.store_product_id,
     userBookCreatedAt: row.created_at,
   }))
 
