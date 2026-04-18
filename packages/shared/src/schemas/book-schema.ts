@@ -31,11 +31,21 @@ export const thumbnailUrlSchema = z
     { message: 'thumbnailUrl は許可されたドメインのみ使用可能です' },
   )
 
+// ストア固有の商品ID (Amazon ASIN は 10 文字固定、DMM コンテンツID は実測 ~30 文字)。
+// 余裕込みで 64 文字上限、制御文字・空白を弾く allowlist を課す。
+export const storeProductIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9\-_./]+$/, 'storeProductId は英数と -_./ のみ許可')
+
 export const scrapeBookSchema = z.object({
   title: z.string().trim().min(1).max(500),
   author: z.string().trim().min(1).max(200),
   volumeNumber: z.number().int().positive().max(9999).optional(),
   store: storeSchema,
+  storeProductId: storeProductIdSchema.optional(),
   thumbnailUrl: thumbnailUrlSchema.optional(),
   isbn: z
     .string()

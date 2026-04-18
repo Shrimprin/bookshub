@@ -37,6 +37,7 @@ const validBookWithStore = {
   createdAt: '2024-03-04T00:00:00.000Z',
   userBookId: '660e8400-e29b-41d4-a716-446655440000',
   store: 'kindle' as const,
+  storeProductId: 'B0ABCDEFGH',
   userBookCreatedAt: '2024-03-04T00:00:00.000Z',
 }
 
@@ -382,8 +383,34 @@ describe('bookWithStoreSchema', () => {
       thumbnailUrl: null,
       isbn: null,
       publishedAt: null,
+      storeProductId: null,
     })
     expect(result.success).toBe(true)
+  })
+
+  describe('storeProductId', () => {
+    it('文字列を受け入れる', () => {
+      const result = bookWithStoreSchema.safeParse({
+        ...validBookWithStore,
+        storeProductId: 'B0ABCDEFGH',
+      })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.storeProductId).toBe('B0ABCDEFGH')
+    })
+
+    it('null を受け入れる', () => {
+      const result = bookWithStoreSchema.safeParse({
+        ...validBookWithStore,
+        storeProductId: null,
+      })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.storeProductId).toBeNull()
+    })
+
+    it('storeProductId 欠落を拒否する (required nullable)', () => {
+      const { storeProductId: _, ...noStoreProductId } = validBookWithStore
+      expect(bookWithStoreSchema.safeParse(noStoreProductId).success).toBe(false)
+    })
   })
 })
 

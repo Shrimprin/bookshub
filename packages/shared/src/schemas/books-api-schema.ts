@@ -57,6 +57,7 @@ export const bookWithStoreSchema = z.object({
   createdAt: z.string(),
   userBookId: z.string().uuid(),
   store: storeSchema,
+  storeProductId: z.string().nullable(),
   userBookCreatedAt: z.string(),
 })
 
