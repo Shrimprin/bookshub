@@ -579,6 +579,13 @@ components:
           example: 107
         store:
           $ref: '#/components/schemas/Store'
+        storeProductId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_./-]+$'
+          description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。deep link 派生に使用
+          example: B0CXXXXXX1
         thumbnailUrl:
           type: string
           format: uri
@@ -718,6 +725,7 @@ components:
         - createdAt
         - userBookId
         - store
+        - storeProductId
         - userBookCreatedAt
       properties:
         id:
@@ -751,6 +759,11 @@ components:
           description: user_books テーブルの ID
         store:
           $ref: '#/components/schemas/Store'
+        storeProductId:
+          type: string
+          nullable: true
+          description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。NULL 可。`buildStoreUrl` で deep link を生成
+          example: B0CXXXXXX1
         userBookCreatedAt:
           type: string
           format: date-time

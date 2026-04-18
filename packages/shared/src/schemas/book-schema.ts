@@ -38,7 +38,7 @@ export const storeProductIdSchema = z
   .trim()
   .min(1)
   .max(64)
-  .regex(/^[A-Za-z0-9\-_./]+$/, 'storeProductId は英数と -_./ のみ許可')
+  .regex(/^[A-Za-z0-9_./-]+$/, 'storeProductId は英数と -_./ のみ許可')
 
 export const scrapeBookSchema = z.object({
   title: z.string().trim().min(1).max(500),
