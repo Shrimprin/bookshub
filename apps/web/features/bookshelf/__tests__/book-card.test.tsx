@@ -14,6 +14,7 @@ const baseBook: BookWithStore = {
   createdAt: '2024-01-01T00:00:00.000Z',
   userBookId: '22222222-2222-2222-2222-222222222222',
   store: 'kindle',
+  storeProductId: 'B0ABCDEFGH',
   userBookCreatedAt: '2024-01-01T00:00:00.000Z',
 }
 
@@ -55,5 +56,33 @@ describe('BookCard', () => {
   it('DMM の書籍は DMM バッジを表示する', () => {
     render(<BookCard book={{ ...baseBook, store: 'dmm' }} />)
     expect(screen.getByLabelText('購入ストア: DMM')).toBeInTheDocument()
+  })
+
+  describe('ストア商品ページへのリンク (#32)', () => {
+    it('Kindle + storeProductId ありで Amazon 商品ページへのリンクになる', () => {
+      render(<BookCard book={baseBook} />)
+      const link = screen.getByRole('link', { name: /ワンピース/ })
+      expect(link).toHaveAttribute('href', 'https://www.amazon.co.jp/dp/B0ABCDEFGH')
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
+    it('DMM + storeProductId ありで DMM 商品ページへのリンクになる', () => {
+      render(<BookCard book={{ ...baseBook, store: 'dmm', storeProductId: 'abc123' }} />)
+      const link = screen.getByRole('link', { name: /ワンピース/ })
+      expect(link).toHaveAttribute('href', 'https://book.dmm.com/product/abc123/')
+    })
+
+    it('storeProductId が null のときはリンクにならない', () => {
+      render(<BookCard book={{ ...baseBook, storeProductId: null }} />)
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+      // タイトルはそのまま表示される
+      expect(screen.getByText('ワンピース (105巻)')).toBeInTheDocument()
+    })
+
+    it('store=other のときはリンクにならない', () => {
+      render(<BookCard book={{ ...baseBook, store: 'other' }} />)
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
   })
 })
