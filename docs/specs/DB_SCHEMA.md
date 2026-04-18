@@ -87,7 +87,11 @@ CREATE TRIGGER on_auth_user_created
 
 ### 制約
 
-なし（制約は部分ユニークインデックスで実装）
+| 制約名                          | 種別  | 条件                                                                      | 用途                                                            |
+| ------------------------------- | ----- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `books_store_product_id_format` | CHECK | `store_product_id IS NULL OR store_product_id ~ '^[A-Za-z0-9_.-]{1,64}$'` | アプリ層の Zod バリデーションと同等の文字種制限を DB 側でも強制 |
+
+その他の重複防止は部分ユニークインデックスで実装（下記）。
 
 ### インデックス
 
@@ -162,13 +166,14 @@ CREATE TRIGGER user_books_updated_at
 
 ## Migration History
 
-| Version          | Name                          | Applied | 説明                                                                 |
-| ---------------- | ----------------------------- | ------- | -------------------------------------------------------------------- |
-| `20260410135910` | `create_initial_schema`       | ✓       | 初期スキーマ（books, book_volumes, user_books, profiles）            |
-| `20260411000000` | `restructure_books_schema`    | ✓       | book_volumes を books に統合、max_volume_owned 削除                  |
-| `20260411000001` | `fix_rls_policies`            | ✓       | RLS ポリシーのセキュリティ修正                                       |
-| `20260411000002` | `fix_books_unique_constraint` | ✓       | books テーブルの UNIQUE 制約を部分インデックスに変更                 |
-| `20260418000000` | `books_store_product_id`      | ✓       | `books.store_product_id` カラム追加 (ASIN / DMM コンテンツID 永続化) |
+| Version          | Name                           | Applied | 説明                                                                 |
+| ---------------- | ------------------------------ | ------- | -------------------------------------------------------------------- |
+| `20260410135910` | `create_initial_schema`        | ✓       | 初期スキーマ（books, book_volumes, user_books, profiles）            |
+| `20260411000000` | `restructure_books_schema`     | ✓       | book_volumes を books に統合、max_volume_owned 削除                  |
+| `20260411000001` | `fix_rls_policies`             | ✓       | RLS ポリシーのセキュリティ修正                                       |
+| `20260411000002` | `fix_books_unique_constraint`  | ✓       | books テーブルの UNIQUE 制約を部分インデックスに変更                 |
+| `20260418000000` | `books_store_product_id`       | ✓       | `books.store_product_id` カラム追加 (ASIN / DMM コンテンツID 永続化) |
+| `20260419000000` | `books_store_product_id_check` | ✓       | `store_product_id` に文字種 CHECK 制約を追加 (defense in depth)      |
 
 ---
 

@@ -38,7 +38,10 @@ export const storeProductIdSchema = z
   .trim()
   .min(1)
   .max(64)
-  .regex(/^[A-Za-z0-9_./-]+$/, 'storeProductId は英数と -_./ のみ許可')
+  // open-redirect の芽を断つため `/` は allowlist から除外。`.` はストア ID に含まれうる
+  // フォーマット (例: 将来の ISBN ベース ID) を想定して残す。現行の Kindle ASIN は
+  // `^[A-Z0-9]{10}$` のみだが、他ストア追加時の拡張余地として `.` と `-_` を許可。
+  .regex(/^[A-Za-z0-9_.-]+$/, 'storeProductId は英数と -_. のみ許可')
 
 export const scrapeBookSchema = z.object({
   title: z.string().trim().min(1).max(500),

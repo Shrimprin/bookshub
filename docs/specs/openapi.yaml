@@ -583,7 +583,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[A-Za-z0-9_./-]+$'
+          pattern: '^[A-Za-z0-9_.-]+$'
           description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。deep link 派生に使用
           example: B0CXXXXXX1
         thumbnailUrl:

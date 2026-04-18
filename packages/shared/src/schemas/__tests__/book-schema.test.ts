@@ -234,6 +234,15 @@ describe('scrapeBookSchema', () => {
         expect(result.success).toBe(false)
       },
     )
+
+    // open-redirect の芽 (`..//evil.com` 等) を事前に封じるため `/` は拒否する
+    it.each(['a/b', '//evil.com', '..//evil.com', 'path/to/id'])(
+      'スラッシュを含む %j を拒否する (open redirect 防止)',
+      (value) => {
+        const result = scrapeBookSchema.safeParse({ ...validBook, storeProductId: value })
+        expect(result.success).toBe(false)
+      },
+    )
   })
 
   describe('isAdult', () => {
