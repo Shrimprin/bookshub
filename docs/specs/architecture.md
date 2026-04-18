@@ -261,6 +261,41 @@ API が 401 を返した場合、Background Service Worker は `chrome.storage.l
 | 型ガード `isValidMessage()`                | Content Script からの未検証 payload を Service Worker が安全に処理 |
 | `sender.id === chrome.runtime.id`          | 悪意あるコンテンツスクリプトからのメッセージを拒否                 |
 
+### 6.1 Server Component のデータ取得戦略 (ADR)
+
+**決定:** 認証済みユーザーの蔵書を表示する Server Component (例: `/(protected)/bookshelf/page.tsx`) は、`/api/books` を HTTP 経由で fetch せず、`lib/books/get-user-books.ts` の `getUserBooks()` を**直接呼び出す**。
+
+**背景:**
+
+- `/api/books` は Chrome 拡張機能からの呼び出しを想定して **Bearer トークン認証 + Edge Runtime** で実装されている
+- Server Component は cookie セッションで `createClient()` からユーザー情報を取得できるが、Bearer トークンは保持していない
+- SC 内で cookie からトークンを取り出して自己 fetch するのは、無意味なネットワーク往復と複雑さの増加を招く
+
+**採用した設計:**
+
+- `getUserBooks(supabase, userId, query)` をアプリケーション層のユースケース関数と位置付け、**`/api/books` ルートハンドラと Server Component の両者が薄いアダプタとして共有**する
+- データ整合性は `packages/shared` の zod schema (`getBooksQuerySchema` / `bookWithStoreSchema`) が単一ソースとして担保する (OpenAPI と SC の乖離リスクは zod 経由で封じる)
+- RLS は有効だが `getUserBooks()` 側でも `.eq('user_id', userId)` を明示的にかけ、RLS policy の migration バグや service_role 誤用時の漏洩を防ぐ (defense in depth)
+
+**キャッシュ戦略:**
+
+- 現状: `/(protected)/bookshelf/page.tsx` に `export const dynamic = 'force-dynamic'` を指定し、毎リクエストで DB クエリを走らせる。MVP 段階では Chrome 拡張機能のスクレイプ後に「タブをリロードすれば最新」という UX を優先する
+- 将来: ユーザー数増加で Supabase コネクションプールが逼迫する段階に達したら、`unstable_cache` で `getUserBooks()` をラップし `tags: [\`user-books-${userId}\`]` を付与。`/api/books`POST (手動登録) と`/api/scrape`(拡張機能スクレイプ) の成功時に`revalidateTag()` を呼んで無効化する方式へ移行する
+- Cloudflare Pages (OpenNext) では `unstable_cache` のバッキングストアに KV / R2 を選択する必要があり、その設定とセットで導入する
+
+**関連ファイル:**
+
+- `apps/web/app/(protected)/bookshelf/page.tsx` — SC 側のアダプタ
+- `apps/web/app/api/books/route.ts` — 拡張機能向け Bearer トークンアダプタ
+- `apps/web/lib/books/get-user-books.ts` — 共有ユースケース関数
+- `packages/shared/src/schemas/books-api-schema.ts` — 単一ソースの zod schema
+
+**却下した代替案:**
+
+- **SC から `/api/books` へ self-fetch**: Bearer トークンの取り回しと HTTP 往復のコストが無駄。
+- **Supabase を SC から直接 query**: 検索・ソート・ページング等のクエリ構築ロジックが API ルートと重複する。
+- **専用の `fetch-user-books-for-ssr.ts` ラッパを新設**: 既存の `getUserBooks()` が既に SC から直接呼べる純粋関数なので抽象の水増し。
+
 ---
 
 ## 7. Cloudflare Pages Edge Runtime の制約

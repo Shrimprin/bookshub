@@ -39,6 +39,19 @@ function extractAsin(titleCard: Element): string | null {
   return id.slice('content-title-'.length)
 }
 
+// ASIN を 10 桁の英数字に限定するガード (Kindle ASIN は B0XXXXXXXX 形式)
+// 万一不正な値を引き当てても Amazon の画像 URL パターンを壊さないよう保険として検証する。
+function isValidAsin(asin: string): boolean {
+  return /^[A-Z0-9]{10}$/.test(asin)
+}
+
+// Amazon の汎用書影 URL パターン。P/<ASIN>.jpg は ASIN さえ正しければ存在し、
+// Kindle のコンテンツリスト DOM 上に img が lazy-load されていなくても
+// 確実にアクセスできる。ALLOWED_THUMBNAIL_HOSTS (m.media-amazon.com) に含まれる。
+function buildAmazonThumbnailUrl(asin: string): string {
+  return `https://m.media-amazon.com/images/P/${asin}.jpg`
+}
+
 // タイトル要素の直近の祖先で、著者要素も含む「書籍カード全体」を見つける。
 // 具体的には digital_entity_title と digital_entity_author を両方含む祖先要素。
 function findBookCardRoot(titleCard: Element): Element | null {
@@ -79,14 +92,15 @@ export function scrapeKindleBooks(): RawBookData[] {
       null
     const author = authorEl?.textContent?.trim() ?? ''
 
-    // サムネイル: カード全体から img を探す
-    const img = cardRoot?.querySelector<HTMLImageElement>('img')
-    const thumbnailUrl = img?.src || undefined
+    // サムネイル: ASIN から Amazon の書影 URL を直接組み立てる。
+    // DOM 上の <img> は lazy-load や複数画像の混在で信頼できないため、
+    // 一意に決まる ASIN ベースの URL パターンを優先する。
+    const asin = extractAsin(titleCard)
+    const thumbnailUrl = asin && isValidAsin(asin) ? buildAmazonThumbnailUrl(asin) : undefined
 
     if (!title || !author) {
-      const asin = extractAsin(titleCard) ?? '?'
       console.warn(
-        `${LOG_PREFIX} skipping ASIN=${asin} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
+        `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
       )
       continue
     }

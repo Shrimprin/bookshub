@@ -102,6 +102,76 @@ describe('getUserBooks', () => {
     expect(supabase._builder.or).toHaveBeenCalled()
   })
 
+  it('q の値を PostgREST の "..." で囲み、title/author 両方の ilike にかける', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: 'ワンピ' })
+
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%ワンピ%",author.ilike."%ワンピ%"',
+      { referencedTable: 'books' },
+    )
+  })
+
+  it('q に `,` が含まれる場合、PostgREST の or 区切りと誤認されないよう " で囲む', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: 'foo,bar' })
+
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%foo,bar%",author.ilike."%foo,bar%"',
+      { referencedTable: 'books' },
+    )
+  })
+
+  it('q に `(` や `)` を含んでも or フィルタが壊れない', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: '(23)' })
+
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%(23)%",author.ilike."%(23)%"',
+      { referencedTable: 'books' },
+    )
+  })
+
+  it('q の LIKE メタ文字 (%, _) は \\ でエスケープされ literal 扱いとなる', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: '50%_off' })
+
+    // 50% → LIKE-escape → 50\% (1 \) → PostgREST " 内 escape → 50\\% (2 \)
+    // → 最終 `"%50\\%\\_off%"` (引用符内の \\ は PostgREST が \ 1 つとして解釈し、
+    //   その \ が SQL LIKE の escape char として % / _ を literal 化する)
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%50\\\\%\\\\_off%",author.ilike."%50\\\\%\\\\_off%"',
+      { referencedTable: 'books' },
+    )
+  })
+
+  it('q に \\ が含まれる場合、LIKE 用と PostgREST " 用の二段エスケープが行われる', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: 'a\\b' })
+
+    // a\b → LIKE: a\\b (\ が escape 用に重なる) → PostgREST " 内: \\ → \\\\
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%a\\\\\\\\b%",author.ilike."%a\\\\\\\\b%"',
+      { referencedTable: 'books' },
+    )
+  })
+
+  it('q に " が含まれる場合、PostgREST " の終端と誤認されないよう \\ でエスケープ', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    await getUserBooks(supabase, userId, { ...defaultQuery, q: 'a"b' })
+
+    expect(supabase._builder.or).toHaveBeenCalledWith(
+      'title.ilike."%a\\"b%",author.ilike."%a\\"b%"',
+      { referencedTable: 'books' },
+    )
+  })
+
   it('store フィルタがある場合、eq を呼ぶ', async () => {
     const supabase = createMockSupabase({ data: [], count: 0, error: null })
 

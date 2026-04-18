@@ -1,7 +1,11 @@
+import { cache } from 'react'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-export async function createClient() {
+// React.cache で同一リクエスト内の createClient() 呼び出しを dedupe する。
+// layout と page が独立に createClient() を呼んでも Supabase client と
+// auth.getUser() のネットワーク往復を 1 回に抑えられる。
+export const createClient = cache(async () => {
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -24,4 +28,4 @@ export async function createClient() {
       },
     },
   )
-}
+})
