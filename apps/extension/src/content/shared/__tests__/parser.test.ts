@@ -189,4 +189,20 @@ describe('parseBooks', () => {
     const result = parseBooks(raw, 'dmm')
     expect(result[0]?.store).toBe('dmm')
   })
+
+  it('storeProductId をパススルーする', () => {
+    const raw: RawBookData[] = [
+      { title: 'テスト 1巻', author: 'テスト作者', storeProductId: 'B0ABCDEFGH' },
+    ]
+
+    const result = parseBooks(raw, store)
+    expect(result[0]?.storeProductId).toBe('B0ABCDEFGH')
+  })
+
+  it('storeProductId 未指定時は undefined', () => {
+    const raw: RawBookData[] = [{ title: 'テスト 1巻', author: 'テスト作者' }]
+
+    const result = parseBooks(raw, store)
+    expect(result[0]?.storeProductId).toBeUndefined()
+  })
 })

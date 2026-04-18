@@ -96,7 +96,10 @@ export function scrapeKindleBooks(): RawBookData[] {
     // DOM 上の <img> は lazy-load や複数画像の混在で信頼できないため、
     // 一意に決まる ASIN ベースの URL パターンを優先する。
     const asin = extractAsin(titleCard)
-    const thumbnailUrl = asin && isValidAsin(asin) ? buildAmazonThumbnailUrl(asin) : undefined
+    const hasValidAsin = !!asin && isValidAsin(asin)
+    const thumbnailUrl = hasValidAsin ? buildAmazonThumbnailUrl(asin) : undefined
+    // 不正な ASIN は deep link 生成時の URL 破壊要因になるため undefined で送る
+    const storeProductId = hasValidAsin ? asin : undefined
 
     if (!title || !author) {
       console.warn(
@@ -105,7 +108,7 @@ export function scrapeKindleBooks(): RawBookData[] {
       continue
     }
 
-    books.push({ title, author, thumbnailUrl })
+    books.push({ title, author, thumbnailUrl, storeProductId })
   }
 
   return books
