@@ -2,16 +2,18 @@ import { buildStoreUrl } from '../deep-link'
 
 describe('buildStoreUrl', () => {
   describe('kindle', () => {
-    it('ASIN から Amazon 商品ページ URL を生成する', () => {
-      expect(buildStoreUrl('kindle', 'B0XXXXXXXX')).toBe('https://www.amazon.co.jp/dp/B0XXXXXXXX')
+    it('ASIN から Amazon Cloud Reader (漫画ビューア) URL を生成する', () => {
+      expect(buildStoreUrl('kindle', 'B0XXXXXXXX')).toBe(
+        'https://read.amazon.co.jp/manga/B0XXXXXXXX',
+      )
     })
 
     it('スペース等を含む productId は encode される', () => {
-      expect(buildStoreUrl('kindle', 'a b')).toBe('https://www.amazon.co.jp/dp/a%20b')
+      expect(buildStoreUrl('kindle', 'a b')).toBe('https://read.amazon.co.jp/manga/a%20b')
     })
 
     it('スラッシュを含む productId は encode される', () => {
-      expect(buildStoreUrl('kindle', 'a/b')).toBe('https://www.amazon.co.jp/dp/a%2Fb')
+      expect(buildStoreUrl('kindle', 'a/b')).toBe('https://read.amazon.co.jp/manga/a%2Fb')
     })
   })
 

@@ -46,7 +46,7 @@ export function BookCard({ book }: BookCardProps) {
       href={storeUrl}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`${titleWithVolume} を ${book.store === 'kindle' ? 'Amazon' : 'DMM'} で開く`}
+      aria-label={`${titleWithVolume} を ${book.store === 'kindle' ? 'Kindle で読む' : 'DMM Books で開く'}`}
       className="block rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       {cardBody}

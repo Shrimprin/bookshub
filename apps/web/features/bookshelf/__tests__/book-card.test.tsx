@@ -59,10 +59,10 @@ describe('BookCard', () => {
   })
 
   describe('ストア商品ページへのリンク (#32)', () => {
-    it('Kindle + storeProductId ありで Amazon 商品ページへのリンクになる', () => {
+    it('Kindle + storeProductId ありで Amazon Cloud Reader へのリンクになる', () => {
       render(<BookCard book={baseBook} />)
       const link = screen.getByRole('link', { name: /ワンピース/ })
-      expect(link).toHaveAttribute('href', 'https://www.amazon.co.jp/dp/B0ABCDEFGH')
+      expect(link).toHaveAttribute('href', 'https://read.amazon.co.jp/manga/B0ABCDEFGH')
       expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     })
