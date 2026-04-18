@@ -5,6 +5,7 @@ export interface RawBookData {
   author: string
   thumbnailUrl?: string
   isAdult?: boolean
+  storeProductId?: string
 }
 
 // 全角数字 ０-９ (U+FF10-U+FF19) を半角 0-9 (U+0030-U+0039) に正規化する
@@ -80,12 +81,15 @@ export function parseBooks(rawBooks: RawBookData[], store: Store): ScrapeBook[] 
       thumbnailUrl = raw.thumbnailUrl
     }
 
+    const storeProductId = raw.storeProductId?.trim()
+
     result.push({
       title: seriesTitle,
       author,
       volumeNumber,
       store,
       thumbnailUrl,
+      storeProductId: storeProductId || undefined,
       isAdult: raw.isAdult ?? false,
     })
   }

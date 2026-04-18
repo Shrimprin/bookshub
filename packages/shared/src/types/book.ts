@@ -11,6 +11,7 @@ export interface Book {
   isbn?: string
   publishedAt?: string
   isAdult: boolean
+  storeProductId?: string
 }
 
 export interface NewBook {

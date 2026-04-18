@@ -180,15 +180,17 @@ describe('kindle', () => {
         title: 'ワンピース 107巻',
         author: '尾田栄一郎',
         thumbnailUrl: 'https://m.media-amazon.com/images/P/B0CXXXXXX1.jpg',
+        storeProductId: 'B0CXXXXXX1',
       })
       expect(result[1]).toEqual({
         title: '鬼滅の刃（23）',
         author: '吾峠呼世晴',
         thumbnailUrl: 'https://m.media-amazon.com/images/P/B0CXXXXXX2.jpg',
+        storeProductId: 'B0CXXXXXX2',
       })
     })
 
-    it('ASIN が 10 桁の英数字形式でない場合は thumbnailUrl を undefined にする', () => {
+    it('ASIN が 10 桁の英数字形式でない場合は thumbnailUrl と storeProductId を undefined にする', () => {
       document.body.innerHTML = ''
       const list = document.createElement('div')
       list.id = 'CONTENT_LIST'
@@ -212,6 +214,7 @@ describe('kindle', () => {
       const result = kindleModule.scrapeKindleBooks()
       expect(result).toHaveLength(1)
       expect(result[0]?.thumbnailUrl).toBeUndefined()
+      expect(result[0]?.storeProductId).toBeUndefined()
     })
 
     it('書籍要素がない場合は空配列を返す', () => {
@@ -282,6 +285,7 @@ describe('kindle', () => {
             volumeNumber: 107,
             store: 'kindle',
             thumbnailUrl: 'https://m.media-amazon.com/images/P/B0TESTXXX1.jpg',
+            storeProductId: 'B0TESTXXX1',
             isAdult: false,
           },
         ],
