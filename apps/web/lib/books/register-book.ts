@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RegisterBook, RegisterBookResponse, Store } from '@bookhub/shared'
+import { extractSeriesTitle, extractVolumeNumber } from '@bookhub/shared'
 import { normalizeText, findExistingBook, insertBook } from '@/lib/books/book-repository'
 
 type RegisterBookResult = RegisterBookResponse | { error: 'conflict'; message: string }
@@ -9,12 +10,17 @@ export async function registerBook(
   userId: string,
   data: RegisterBook,
 ): Promise<RegisterBookResult> {
-  const title = normalizeText(data.title)
+  // 防御層: 拡張機能経由の scrape とは別に手動登録経路もあるため、title に
+  // 巻数やラベルが含まれる場合はここでも series title と volume_number に分解する
+  const parsedTitle = extractSeriesTitle(data.title) || data.title
+  const parsedVolume = data.volumeNumber ?? extractVolumeNumber(data.title)
+  const title = normalizeText(parsedTitle)
   const author = normalizeText(data.author)
 
   // Step 1: books テーブルで既存チェック or 新規 INSERT
-  const existing = await findExistingBook(supabase, title, author, data.volumeNumber)
-  const bookRow = existing ?? (await insertBook(supabase, { ...data, title, author }))
+  const existing = await findExistingBook(supabase, title, author, parsedVolume)
+  const bookRow =
+    existing ?? (await insertBook(supabase, { ...data, title, author, volumeNumber: parsedVolume }))
 
   // Step 2: 別ストアで所持しているか確認（二度買い防止）
   const { data: existingUserBooks, error: selectError } = await supabase

@@ -1,4 +1,4 @@
-import type { ScrapeBook, Store } from '@bookhub/shared'
+import type { ScrapeBook, Store } from '../schemas/book-schema.js'
 
 export interface RawBookData {
   title: string

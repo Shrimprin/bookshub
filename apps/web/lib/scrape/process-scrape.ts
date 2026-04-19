@@ -1,11 +1,24 @@
-import type { ScrapeBook } from '@bookhub/shared'
+import type { ScrapeBook, ScrapeResponse } from '@bookhub/shared'
+import { extractSeriesTitle, extractVolumeNumber } from '@bookhub/shared'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ScrapeResponse } from '@bookhub/shared'
 import { normalizeText, findExistingBook, insertBook } from '@/lib/books/book-repository'
 
 interface UserBookRow {
   book_id: string
   store: string
+}
+
+// 防御層: 拡張機能の古いビルドや手動 POST で parser を通っていないタイトルが
+// 届いた場合でも、サーバー側でもう一度 extractSeriesTitle / extractVolumeNumber
+// を走らせて正規化する。拡張機能側で parse 済の場合は idempotent なのでコスト無し。
+function normalizeScrapeBook(book: ScrapeBook): ScrapeBook {
+  const seriesTitle = extractSeriesTitle(book.title)
+  const volumeNumber = book.volumeNumber ?? extractVolumeNumber(book.title)
+  return {
+    ...book,
+    title: seriesTitle || book.title,
+    volumeNumber,
+  }
 }
 
 function deduplicateBooks(books: ScrapeBook[]): ScrapeBook[] {
@@ -40,7 +53,10 @@ export async function processScrapePayload(
   userId: string,
   books: ScrapeBook[],
 ): Promise<ScrapeResponse> {
-  const uniqueBooks = deduplicateBooks(books)
+  // まず防御 parse を適用してから dedup する (parse 後に同一シリーズ・同一巻に
+  // 畳まれる可能性があるため順序が重要)
+  const normalized = books.map(normalizeScrapeBook)
+  const uniqueBooks = deduplicateBooks(normalized)
   const duplicates: ScrapeResponse['duplicates'] = []
   let savedCount = 0
 

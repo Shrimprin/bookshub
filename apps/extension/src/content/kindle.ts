@@ -1,6 +1,5 @@
-import type { ScrapeBook } from '@bookhub/shared'
-import type { RawBookData } from './shared/parser.js'
-import { parseBooks } from './shared/parser.js'
+import type { ScrapeBook, RawBookData } from '@bookhub/shared'
+import { parseBooks } from '@bookhub/shared'
 import { sendScrapedBooks } from './shared/sender.js'
 import {
   STALE_TTL_MS,

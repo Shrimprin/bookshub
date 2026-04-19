@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import type { Store } from '@bookhub/shared'
-import { extractVolumeNumber, extractSeriesTitle, parseBooks, type RawBookData } from '../parser.js'
+import type { Store } from '../../schemas/book-schema.js'
+import {
+  extractVolumeNumber,
+  extractSeriesTitle,
+  parseBooks,
+  type RawBookData,
+} from '../title-parser.js'
 
 describe('extractVolumeNumber', () => {
   it.each([
