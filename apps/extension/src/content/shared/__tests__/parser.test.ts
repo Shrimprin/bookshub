@@ -205,4 +205,22 @@ describe('parseBooks', () => {
     const result = parseBooks(raw, store)
     expect(result[0]?.storeProductId).toBeUndefined()
   })
+
+  it('storeProductId の前後空白は trim される', () => {
+    const raw: RawBookData[] = [
+      { title: 'テスト 1巻', author: 'テスト作者', storeProductId: '  B0ABCDEFGH  ' },
+    ]
+
+    const result = parseBooks(raw, store)
+    expect(result[0]?.storeProductId).toBe('B0ABCDEFGH')
+  })
+
+  it('空白のみの storeProductId は undefined に畳まれる', () => {
+    const raw: RawBookData[] = [
+      { title: 'テスト 1巻', author: 'テスト作者', storeProductId: '   ' },
+    ]
+
+    const result = parseBooks(raw, store)
+    expect(result[0]?.storeProductId).toBeUndefined()
+  })
 })

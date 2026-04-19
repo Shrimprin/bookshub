@@ -30,7 +30,7 @@ storeProductId: z
   .trim()
   .min(1)
   .max(64)
-  .regex(/^[A-Za-z0-9\-_./]+$/, 'storeProductId は英数と -_./ のみ許可')
+  .regex(/^[A-Za-z0-9_.-]+$/, 'storeProductId は英数と ._- のみ許可')
   .optional(),
 ```
 
@@ -139,7 +139,7 @@ COMMENT ON COLUMN public.books.store_product_id IS
 
 `books` テーブルのカラム表に以下の行を `is_adult` 直後あたりに追加:
 
-```
+```md
 | `store_product_id` | text | NULL可 | ストア固有の商品ID (例: Amazon ASIN, DMM コンテンツID) |
 ```
 

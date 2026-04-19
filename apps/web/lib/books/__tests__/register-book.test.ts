@@ -101,7 +101,8 @@ describe('registerBook', () => {
 
     const result = await registerBook(supabase, userId, validInput)
 
-    expect('book' in result ? result.book.storeProductId : null).toBe('B0ABCDEFGH')
+    if (!('book' in result)) throw new Error('expected success branch with `book`')
+    expect(result.book.storeProductId).toBe('B0ABCDEFGH')
   })
 
   it('store_product_id が NULL の行は storeProductId: null にマッピングされる', async () => {
@@ -113,7 +114,8 @@ describe('registerBook', () => {
 
     const result = await registerBook(supabase, userId, validInput)
 
-    expect('book' in result ? result.book.storeProductId : 'unset').toBeNull()
+    if (!('book' in result)) throw new Error('expected success branch with `book`')
+    expect(result.book.storeProductId).toBeNull()
   })
 
   it('既存書籍がある場合は findExistingBook の結果を使う', async () => {

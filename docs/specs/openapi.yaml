@@ -357,6 +357,7 @@ paths:
                         createdAt: '2024-01-01T00:00:00Z'
                         userBookId: 660e8400-e29b-41d4-a716-446655440000
                         store: kindle
+                        storeProductId: B0CXXXXXX1
                         userBookCreatedAt: '2024-03-04T00:00:00Z'
                     total: 1
                     page: 1
