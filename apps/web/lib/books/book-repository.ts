@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface BookRow {
   id: string
+  series_id: string
   title: string
   author: string
   volume_number: number | null
@@ -25,7 +26,7 @@ interface InsertBookInput {
 }
 
 const BOOK_COLUMNS =
-  'id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id'
+  'id, series_id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id'
 
 export function normalizeText(text: string): string {
   return text.trim().normalize('NFC')
@@ -54,34 +55,23 @@ export async function insertBook(
   supabase: SupabaseClient,
   book: InsertBookInput,
 ): Promise<BookRow> {
+  // series と books を atomic に登録する RPC を呼ぶ。クライアント側で
+  // series upsert → books insert を分けると、前者成功・後者失敗時に
+  // orphan series が残るため (20260419000002_upsert_book_with_series_rpc.sql)。
   const { data, error } = await supabase
-    .from('books')
-    .insert({
-      title: normalizeText(book.title),
-      author: normalizeText(book.author),
-      volume_number: book.volumeNumber ?? null,
-      thumbnail_url: book.thumbnailUrl ?? null,
-      isbn: book.isbn ?? null,
-      published_at: book.publishedAt ?? null,
-      is_adult: book.isAdult ?? false,
-      store_product_id: book.storeProductId ?? null,
+    .rpc('upsert_book_with_series', {
+      p_title: normalizeText(book.title),
+      p_author: normalizeText(book.author),
+      p_volume_number: book.volumeNumber ?? null,
+      p_thumbnail_url: book.thumbnailUrl ?? null,
+      p_isbn: book.isbn ?? null,
+      p_published_at: book.publishedAt ?? null,
+      p_is_adult: book.isAdult ?? false,
+      p_store_product_id: book.storeProductId ?? null,
     })
-    .select(BOOK_COLUMNS)
+    .single()
 
-  if (error) {
-    if (error.code === '23505') {
-      const existing = await findExistingBook(
-        supabase,
-        normalizeText(book.title),
-        normalizeText(book.author),
-        book.volumeNumber,
-      )
-      if (existing) return existing
-    }
-    throw new Error(`books INSERT failed: ${error.message}`)
-  }
-
-  const row = data && (data as BookRow[])[0]
-  if (!row) throw new Error('books INSERT returned no data — possible RLS issue')
-  return row
+  if (error) throw new Error(`upsert_book_with_series RPC failed: ${error.message}`)
+  if (!data) throw new Error('upsert_book_with_series returned no data — possible RLS issue')
+  return data as BookRow
 }
