@@ -357,6 +357,7 @@ paths:
                         createdAt: '2024-01-01T00:00:00Z'
                         userBookId: 660e8400-e29b-41d4-a716-446655440000
                         store: kindle
+                        storeProductId: B0CXXXXXX1
                         userBookCreatedAt: '2024-03-04T00:00:00Z'
                     total: 1
                     page: 1
@@ -579,6 +580,13 @@ components:
           example: 107
         store:
           $ref: '#/components/schemas/Store'
+        storeProductId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_.-]+$'
+          description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。deep link 派生に使用
+          example: B0CXXXXXX1
         thumbnailUrl:
           type: string
           format: uri
@@ -718,6 +726,7 @@ components:
         - createdAt
         - userBookId
         - store
+        - storeProductId
         - userBookCreatedAt
       properties:
         id:
@@ -751,6 +760,17 @@ components:
           description: user_books テーブルの ID
         store:
           $ref: '#/components/schemas/Store'
+        storeProductId:
+          # OpenAPI 3.1 / JSON Schema 2020-12 準拠の null 型表現 (3.0 の `nullable: true` は廃止)。
+          # ScrapeBook 側 (scrape 入力) と同じ制約 (min/max/pattern) を DB CHECK と整合させて強制する。
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_.-]+$'
+          description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。NULL 可。`buildStoreUrl` で deep link を生成
+          example: B0CXXXXXX1
         userBookCreatedAt:
           type: string
           format: date-time

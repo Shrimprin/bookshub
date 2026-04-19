@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { storeSchema, thumbnailUrlSchema } from './book-schema.js'
+import { storeSchema, thumbnailUrlSchema, storeProductIdSchema } from './book-schema.js'
 
 // --- パスパラメータ ---
 
@@ -57,6 +57,9 @@ export const bookWithStoreSchema = z.object({
   createdAt: z.string(),
   userBookId: z.string().uuid(),
   store: storeSchema,
+  // 入力側 (scrapeBookSchema) と同じ allowlist/長さを出力でも強制。DB CHECK と
+  // 併せて 3 層で整合。DB には NULL 可なので nullable() でラップ。
+  storeProductId: storeProductIdSchema.nullable(),
   userBookCreatedAt: z.string(),
 })
 

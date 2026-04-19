@@ -71,6 +71,7 @@ const mockBookRow = {
   isbn: null,
   published_at: null,
   is_adult: false,
+  store_product_id: 'B0ABCDEFGH',
 }
 
 // --- Tests ---
@@ -91,6 +92,30 @@ describe('registerBook', () => {
     expect(result.alreadyOwned).toBe(false)
     expect(result.existingStores).toEqual([])
     expect(insertBook).toHaveBeenCalled()
+  })
+
+  it('book レスポンスに storeProductId がマッピングされる', async () => {
+    const supabase = createMockSupabase({
+      user_books_select: { data: [], error: null },
+    })
+
+    const result = await registerBook(supabase, userId, validInput)
+
+    if (!('book' in result)) throw new Error('expected success branch with `book`')
+    expect(result.book.storeProductId).toBe('B0ABCDEFGH')
+  })
+
+  it('store_product_id が NULL の行は storeProductId: null にマッピングされる', async () => {
+    vi.mocked(insertBook).mockResolvedValue({ ...mockBookRow, store_product_id: null })
+
+    const supabase = createMockSupabase({
+      user_books_select: { data: [], error: null },
+    })
+
+    const result = await registerBook(supabase, userId, validInput)
+
+    if (!('book' in result)) throw new Error('expected success branch with `book`')
+    expect(result.book.storeProductId).toBeNull()
   })
 
   it('既存書籍がある場合は findExistingBook の結果を使う', async () => {

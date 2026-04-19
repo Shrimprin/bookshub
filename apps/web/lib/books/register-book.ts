@@ -65,6 +65,7 @@ export async function registerBook(
       createdAt: userBook.created_at,
       userBookId: userBook.id,
       store: userBook.store as Store,
+      storeProductId: bookRow.store_product_id,
       userBookCreatedAt: userBook.created_at,
     },
     alreadyOwned: existingStores.length > 0,

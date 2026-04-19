@@ -72,30 +72,36 @@ CREATE TRIGGER on_auth_user_created
 
 ### スキーマ
 
-| カラム          | 型          | 制約                          | 説明                                                                              |
-| --------------- | ----------- | ----------------------------- | --------------------------------------------------------------------------------- |
-| `id`            | uuid        | PK, DEFAULT gen_random_uuid() | 書籍 ID                                                                           |
-| `title`         | text        | NOT NULL                      | 作品タイトル                                                                      |
-| `author`        | text        | NOT NULL                      | 著者名                                                                            |
-| `volume_number` | integer     | NULL可                        | 巻数。NULL = 単巻・一話完結作品。部分ユニークインデックスで NULL 同士の重複を防ぐ |
-| `thumbnail_url` | text        | NULL可                        | 表紙画像 URL（巻ごとに異なる可能性あり）                                          |
-| `isbn`          | text        | NULL可                        | ISBN コード                                                                       |
-| `published_at`  | date        | NULL可                        | 出版日                                                                            |
-| `is_adult`      | boolean     | NOT NULL, DEFAULT false       | 成人向けフラグ（true の場合は本棚分離）                                           |
-| `created_at`    | timestamptz | NOT NULL, DEFAULT now()       | 作成日時                                                                          |
+| カラム             | 型          | 制約                          | 説明                                                                              |
+| ------------------ | ----------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| `id`               | uuid        | PK, DEFAULT gen_random_uuid() | 書籍 ID                                                                           |
+| `title`            | text        | NOT NULL                      | 作品タイトル                                                                      |
+| `author`           | text        | NOT NULL                      | 著者名                                                                            |
+| `volume_number`    | integer     | NULL可                        | 巻数。NULL = 単巻・一話完結作品。部分ユニークインデックスで NULL 同士の重複を防ぐ |
+| `thumbnail_url`    | text        | NULL可                        | 表紙画像 URL（巻ごとに異なる可能性あり）                                          |
+| `isbn`             | text        | NULL可                        | ISBN コード                                                                       |
+| `published_at`     | date        | NULL可                        | 出版日                                                                            |
+| `is_adult`         | boolean     | NOT NULL, DEFAULT false       | 成人向けフラグ（true の場合は本棚分離）                                           |
+| `store_product_id` | text        | NULL可                        | ストア固有の商品ID（例: Amazon ASIN, DMM コンテンツID）。deep link 派生に使用     |
+| `created_at`       | timestamptz | NOT NULL, DEFAULT now()       | 作成日時                                                                          |
 
 ### 制約
 
-なし（制約は部分ユニークインデックスで実装）
+| 制約名                          | 種別  | 条件                                                                      | 用途                                                            |
+| ------------------------------- | ----- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `books_store_product_id_format` | CHECK | `store_product_id IS NULL OR store_product_id ~ '^[A-Za-z0-9_.-]{1,64}$'` | アプリ層の Zod バリデーションと同等の文字種制限を DB 側でも強制 |
+
+その他の重複防止は部分ユニークインデックスで実装（下記）。
 
 ### インデックス
 
-| インデックス                 | カラム                         | 条件                            | 用途                             |
-| ---------------------------- | ------------------------------ | ------------------------------- | -------------------------------- |
-| `books_single_volume_unique` | (title, author)                | WHERE volume_number IS NULL     | 単巻作品の重複登録防止           |
-| `books_multi_volume_unique`  | (title, author, volume_number) | WHERE volume_number IS NOT NULL | 複数巻作品の巻ごとの重複登録防止 |
-| `idx_books_title_author`     | (title, author)                | —                               | シリーズ単位の検索               |
-| `idx_books_title`            | (title)                        | —                               | タイトル検索（LIKE %）           |
+| インデックス                 | カラム                         | 条件                               | 用途                                   |
+| ---------------------------- | ------------------------------ | ---------------------------------- | -------------------------------------- |
+| `books_single_volume_unique` | (title, author)                | WHERE volume_number IS NULL        | 単巻作品の重複登録防止                 |
+| `books_multi_volume_unique`  | (title, author, volume_number) | WHERE volume_number IS NOT NULL    | 複数巻作品の巻ごとの重複登録防止       |
+| `idx_books_title_author`     | (title, author)                | —                                  | シリーズ単位の検索                     |
+| `idx_books_title`            | (title)                        | —                                  | タイトル検索（LIKE %）                 |
+| `books_store_product_id_idx` | (store_product_id)             | WHERE store_product_id IS NOT NULL | ストア商品ID からの逆引き（deep link） |
 
 **背景**: PostgreSQL の UNIQUE 制約では `NULL = NULL` が偽なので、`volume_number IS NULL` の単巻作品を何件でも登録できてしまいます。部分ユニークインデックスを使用することで、単巻作品の重複を確実に防ぎます。
 
@@ -160,12 +166,14 @@ CREATE TRIGGER user_books_updated_at
 
 ## Migration History
 
-| Version          | Name                          | Applied | 説明                                                      |
-| ---------------- | ----------------------------- | ------- | --------------------------------------------------------- |
-| `20260410135910` | `create_initial_schema`       | ✓       | 初期スキーマ（books, book_volumes, user_books, profiles） |
-| `20260411000000` | `restructure_books_schema`    | ✓       | book_volumes を books に統合、max_volume_owned 削除       |
-| `20260411000001` | `fix_rls_policies`            | ✓       | RLS ポリシーのセキュリティ修正                            |
-| `20260411000002` | `fix_books_unique_constraint` | ✓       | books テーブルの UNIQUE 制約を部分インデックスに変更      |
+| Version          | Name                           | Applied | 説明                                                                 |
+| ---------------- | ------------------------------ | ------- | -------------------------------------------------------------------- |
+| `20260410135910` | `create_initial_schema`        | ✓       | 初期スキーマ（books, book_volumes, user_books, profiles）            |
+| `20260411000000` | `restructure_books_schema`     | ✓       | book_volumes を books に統合、max_volume_owned 削除                  |
+| `20260411000001` | `fix_rls_policies`             | ✓       | RLS ポリシーのセキュリティ修正                                       |
+| `20260411000002` | `fix_books_unique_constraint`  | ✓       | books テーブルの UNIQUE 制約を部分インデックスに変更                 |
+| `20260418000000` | `books_store_product_id`       | ✓       | `books.store_product_id` カラム追加 (ASIN / DMM コンテンツID 永続化) |
+| `20260419000000` | `books_store_product_id_check` | ✓       | `store_product_id` に文字種 CHECK 制約を追加 (defense in depth)      |
 
 ---
 

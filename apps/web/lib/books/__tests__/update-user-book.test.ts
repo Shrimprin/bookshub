@@ -37,6 +37,7 @@ const updatedRecord = {
     isbn: null,
     published_at: null,
     is_adult: false,
+    store_product_id: 'B0ABCDEFGH',
     created_at: '2024-01-01T00:00:00Z',
   },
 }
@@ -55,6 +56,22 @@ describe('updateUserBook', () => {
 
     expect(result).toHaveProperty('store', 'dmm')
     expect(result).toHaveProperty('title', 'ワンピース')
+    expect(result).toHaveProperty('storeProductId', 'B0ABCDEFGH')
+  })
+
+  it('store_product_id が NULL の行は storeProductId: null にマッピングされる', async () => {
+    const supabase = createMockSupabase({
+      data: {
+        ...updatedRecord,
+        books: { ...updatedRecord.books, store_product_id: null },
+      },
+      error: null,
+      count: 1,
+    })
+
+    const result = await updateUserBook(supabase, userId, userBookId, { store: 'dmm' })
+
+    expect(result).toHaveProperty('storeProductId', null)
   })
 
   it('存在しないレコードの場合 not_found エラーを返す', async () => {

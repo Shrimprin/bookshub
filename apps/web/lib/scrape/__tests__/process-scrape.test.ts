@@ -327,6 +327,119 @@ describe('processScrapePayload', () => {
     })
   })
 
+  describe('storeProductId (#32)', () => {
+    it('storeProductId が books INSERT に store_product_id として渡る', async () => {
+      const insertSpy = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(
+          Promise.resolve({
+            data: [
+              {
+                id: 'book-1',
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+                store_product_id: 'B0ABCDEFGH',
+              },
+            ],
+            error: null,
+          }),
+        ),
+      })
+
+      const supabase = {
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === 'books') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
+                  }),
+                }),
+              }),
+              insert: insertSpy,
+            }
+          }
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                in: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null })),
+          }
+        }),
+      } as unknown as Parameters<typeof processScrapePayload>[0]
+
+      const bookWithProductId: ScrapeBook = {
+        ...singleBook,
+        storeProductId: 'B0ABCDEFGH',
+      }
+
+      await processScrapePayload(supabase, userId, [bookWithProductId])
+
+      expect(insertSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ store_product_id: 'B0ABCDEFGH' }),
+      )
+    })
+
+    it('storeProductId 未指定の書籍は store_product_id: null で INSERT される', async () => {
+      const insertSpy = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(
+          Promise.resolve({
+            data: [
+              {
+                id: 'book-1',
+                title: 'ワンピース',
+                author: '尾田栄一郎',
+                volume_number: 107,
+                thumbnail_url: null,
+                isbn: null,
+                published_at: null,
+                is_adult: false,
+                store_product_id: null,
+              },
+            ],
+            error: null,
+          }),
+        ),
+      })
+
+      const supabase = {
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === 'books') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
+                  }),
+                }),
+              }),
+              insert: insertSpy,
+            }
+          }
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                in: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null })),
+          }
+        }),
+      } as unknown as Parameters<typeof processScrapePayload>[0]
+
+      await processScrapePayload(supabase, userId, [singleBook])
+
+      expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ store_product_id: null }))
+    })
+  })
+
   describe('単巻作品（volumeNumber なし）', () => {
     it('volumeNumber が undefined でも正しく処理できる', async () => {
       const singleVolumeBook: ScrapeBook = {

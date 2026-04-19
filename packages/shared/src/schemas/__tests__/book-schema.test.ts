@@ -186,6 +186,65 @@ describe('scrapeBookSchema', () => {
     })
   })
 
+  describe('storeProductId', () => {
+    it('省略可能（undefined）', () => {
+      const result = scrapeBookSchema.safeParse(validBook)
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.storeProductId).toBeUndefined()
+    })
+
+    it('1文字を受け入れる（min 境界）', () => {
+      const result = scrapeBookSchema.safeParse({ ...validBook, storeProductId: 'A' })
+      expect(result.success).toBe(true)
+    })
+
+    it('64文字を受け入れる（max 境界）', () => {
+      const result = scrapeBookSchema.safeParse({
+        ...validBook,
+        storeProductId: 'A'.repeat(64),
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('65文字を拒否する（max 超過）', () => {
+      const result = scrapeBookSchema.safeParse({
+        ...validBook,
+        storeProductId: 'A'.repeat(65),
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('空文字を拒否する', () => {
+      const result = scrapeBookSchema.safeParse({ ...validBook, storeProductId: '' })
+      expect(result.success).toBe(false)
+    })
+
+    it('ASIN (10文字英数) を受け入れる', () => {
+      const result = scrapeBookSchema.safeParse({
+        ...validBook,
+        storeProductId: 'B0ABCDEFGH',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it.each(['a b', 'id\nwith\nnewline', 'id\twith\ttab', 'id<script>', '絵文字🎉'])(
+      '制御文字や許可外文字を含む %j を拒否する',
+      (value) => {
+        const result = scrapeBookSchema.safeParse({ ...validBook, storeProductId: value })
+        expect(result.success).toBe(false)
+      },
+    )
+
+    // open-redirect の芽 (`..//evil.com` 等) を事前に封じるため `/` は拒否する
+    it.each(['a/b', '//evil.com', '..//evil.com', 'path/to/id'])(
+      'スラッシュを含む %j を拒否する (open redirect 防止)',
+      (value) => {
+        const result = scrapeBookSchema.safeParse({ ...validBook, storeProductId: value })
+        expect(result.success).toBe(false)
+      },
+    )
+  })
+
   describe('isAdult', () => {
     it('true を受け入れる', () => {
       const result = scrapeBookSchema.safeParse({ ...validBook, isAdult: true })
