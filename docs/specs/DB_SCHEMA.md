@@ -115,9 +115,7 @@ CREATE TRIGGER on_auth_user_created
 | カラム             | 型          | 制約                                           | 説明                                                                              |
 | ------------------ | ----------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
 | `id`               | uuid        | PK, DEFAULT gen_random_uuid()                  | 書籍 ID                                                                           |
-| `series_id`        | uuid        | NOT NULL, FK → `series(id)` ON DELETE RESTRICT | シリーズ ID (正規化済)。books は必ず series に属する                              |
-| `title`            | text        | NOT NULL                                       | 作品タイトル (段階移行のため series との重複保持。将来削除予定)                   |
-| `author`           | text        | NOT NULL                                       | 著者名 (段階移行のため series との重複保持。将来削除予定)                         |
+| `series_id`        | uuid        | NOT NULL, FK → `series(id)` ON DELETE RESTRICT | シリーズ ID。タイトル・著者は `series` を JOIN して取得する                       |
 | `volume_number`    | integer     | NULL可                                         | 巻数。NULL = 単巻・一話完結作品。部分ユニークインデックスで NULL 同士の重複を防ぐ |
 | `thumbnail_url`    | text        | NULL可                                         | 表紙画像 URL（巻ごとに異なる可能性あり）                                          |
 | `isbn`             | text        | NULL可                                         | ISBN コード                                                                       |
@@ -137,17 +135,13 @@ CREATE TRIGGER on_auth_user_created
 
 ### インデックス
 
-| インデックス                        | カラム                     | 条件                               | 用途                                       |
-| ----------------------------------- | -------------------------- | ---------------------------------- | ------------------------------------------ |
-| `books_series_single_volume_unique` | (series_id)                | WHERE volume_number IS NULL        | 単巻作品の重複登録防止（シリーズ正規化後） |
-| `books_series_multi_volume_unique`  | (series_id, volume_number) | WHERE volume_number IS NOT NULL    | 複数巻作品の巻ごとの重複登録防止           |
-| `idx_books_title_author`            | (title, author)            | —                                  | シリーズ単位の検索 (段階移行中のため残置)  |
-| `idx_books_title`                   | (title)                    | —                                  | タイトル検索（LIKE %）                     |
-| `books_store_product_id_idx`        | (store_product_id)         | WHERE store_product_id IS NOT NULL | ストア商品ID からの逆引き（deep link）     |
+| インデックス                        | カラム                     | 条件                               | 用途                                   |
+| ----------------------------------- | -------------------------- | ---------------------------------- | -------------------------------------- |
+| `books_series_single_volume_unique` | (series_id)                | WHERE volume_number IS NULL        | 単巻作品の重複登録防止                 |
+| `books_series_multi_volume_unique`  | (series_id, volume_number) | WHERE volume_number IS NOT NULL    | 複数巻作品の巻ごとの重複登録防止       |
+| `books_store_product_id_idx`        | (store_product_id)         | WHERE store_product_id IS NOT NULL | ストア商品ID からの逆引き（deep link） |
 
-**背景**: PostgreSQL の UNIQUE 制約では `NULL = NULL` が偽なので、`volume_number IS NULL` の単巻作品を何件でも登録できてしまいます。部分ユニークインデックスを使用することで、単巻作品の重複を確実に防ぎます。`(series_id)` / `(series_id, volume_number)` が B-tree 索引を兼ねるため、追加の単独 `series_id` インデックスは不要です。
-
-**注**: 大文字小文字非対応の LIKE 検索に対応するには、`pg_trgm` 拡張と GIN インデックスを検討（フェーズ2以降）。
+**背景**: PostgreSQL の UNIQUE 制約では `NULL = NULL` が偽なので、`volume_number IS NULL` の単巻作品を何件でも登録できてしまいます。部分ユニークインデックスを使用することで、単巻作品の重複を確実に防ぎます。`(series_id)` / `(series_id, volume_number)` が B-tree 索引を兼ねるため、追加の単独 `series_id` インデックスは不要です。タイトル・著者の検索 (LIKE) は `series` 側のインデックスを使う想定です。
 
 ### RLS ポリシー
 
@@ -217,6 +211,9 @@ CREATE TRIGGER user_books_updated_at
 | `20260418000000` | `books_store_product_id`       | ✓       | `books.store_product_id` カラム追加 (ASIN / DMM コンテンツID 永続化) |
 | `20260419000000` | `books_store_product_id_check` | ✓       | `store_product_id` に文字種 CHECK 制約を追加 (defense in depth)      |
 | `20260419000001` | `introduce_series`             | ✓       | `series` テーブル導入 + `books.series_id` バックフィル + UNIQUE 更新 |
+| `20260419000002` | `upsert_book_with_series_rpc`  | ✓       | `upsert_book_with_series` RPC (series + books を atomic に登録)      |
+| `20260419000003` | `backfill_parser_fix`          | ✓       | parser 相当 SQL で既存 books を再解析、series 再バックフィル         |
+| `20260419000004` | `drop_books_title_author`      | ✓       | `books.title` / `books.author` を DROP (series 正規化完了)           |
 
 ---
 
@@ -271,27 +268,30 @@ CREATE TRIGGER user_books_updated_at
 ### ユーザーの全所持巻（本棚表示）
 
 ```sql
-SELECT b.*, ub.store, ub.created_at AS added_at
+SELECT b.*, s.title, s.author, ub.store, ub.created_at AS added_at
 FROM user_books ub
-JOIN books b ON b.id = ub.book_id
+JOIN books b  ON b.id = ub.book_id
+JOIN series s ON s.id = b.series_id
 WHERE ub.user_id = $1
-ORDER BY b.title, b.volume_number;
+ORDER BY s.title, b.volume_number;
 ```
 
 ### シリーズ別まとめ（次巻ステータス表示）
 
 ```sql
 SELECT
-  b.title,
-  b.author,
+  s.id AS series_id,
+  s.title,
+  s.author,
   COUNT(DISTINCT CASE WHEN b.volume_number IS NOT NULL THEN b.volume_number END) AS owned_count,
   MAX(b.volume_number) AS max_owned_volume,
   STRING_AGG(DISTINCT ub.store, ', ' ORDER BY ub.store) AS stores
 FROM user_books ub
-JOIN books b ON b.id = ub.book_id
+JOIN books b  ON b.id = ub.book_id
+JOIN series s ON s.id = b.series_id
 WHERE ub.user_id = $1
-GROUP BY b.title, b.author
-ORDER BY b.title;
+GROUP BY s.id, s.title, s.author
+ORDER BY s.title;
 ```
 
 ### 二度買い防止チェック
@@ -299,8 +299,9 @@ ORDER BY b.title;
 ```sql
 SELECT ub.store, ub.created_at
 FROM user_books ub
-JOIN books b ON b.id = ub.book_id
-WHERE b.title = $1
+JOIN books b  ON b.id = ub.book_id
+JOIN series s ON s.id = b.series_id
+WHERE s.title = $1
   AND b.volume_number = $2
   AND ub.user_id = $3;
 ```
@@ -355,11 +356,10 @@ SELECT COUNT(*) FROM user_books;
 
 ## フェーズ2 以降での検討事項
 
-| 検討項目                            | 理由                                            | 優先度 |
-| ----------------------------------- | ----------------------------------------------- | ------ |
-| `authors` テーブル分割              | 著者プロフィール、複数著者対応                  | Low    |
-| `series` メタ情報拡張               | 完結フラグ、次巻予定日、is_adult のシリーズ昇格 | Medium |
-| `books.title` / `books.author` 削除 | `series` 正規化完了後、重複保持を解消           | Low    |
-| 全文検索インデックス                | 大文字小文字非対応の LIKE 検索改善              | Medium |
-| books の管理者審査フロー            | 品質管理、スパムデータ削減                      | Medium |
-| ソフトデリート（論理削除）          | 削除履歴の監査                                  | Low    |
+| 検討項目                   | 理由                                            | 優先度 |
+| -------------------------- | ----------------------------------------------- | ------ |
+| `authors` テーブル分割     | 著者プロフィール、複数著者対応                  | Low    |
+| `series` メタ情報拡張      | 完結フラグ、次巻予定日、is_adult のシリーズ昇格 | Medium |
+| 全文検索インデックス       | 大文字小文字非対応の LIKE 検索改善              | Medium |
+| books の管理者審査フロー   | 品質管理、スパムデータ削減                      | Medium |
+| ソフトデリート（論理削除） | 削除履歴の監査                                  | Low    |

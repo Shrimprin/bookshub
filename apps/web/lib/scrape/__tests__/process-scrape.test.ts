@@ -4,10 +4,15 @@ import { processScrapePayload } from '../process-scrape'
 // --- Supabase mock helpers ---
 
 type MockRow = Record<string, unknown>
+type MockSingleResult = {
+  data: MockRow | null
+  error: { message: string; code?: string } | null
+}
 type MockQueryResult = { data: MockRow[] | null; error: { message: string; code?: string } | null }
-type MockRpcResult = { data: MockRow | null; error: { message: string; code?: string } | null }
+type MockRpcResult = MockSingleResult
 
 function createMockSupabase(handlers: {
+  series?: { maybeSingle?: MockSingleResult }
   books?: {
     select?: MockQueryResult
   }
@@ -25,8 +30,6 @@ function createMockSupabase(handlers: {
             data: {
               id: 'default-book-id',
               series_id: 'default-series-id',
-              title: (params.p_title as string) ?? '',
-              author: (params.p_author as string) ?? '',
               volume_number: (params.p_volume_number as number | null) ?? null,
               thumbnail_url: null,
               isbn: null,
@@ -42,22 +45,29 @@ function createMockSupabase(handlers: {
   })
 
   const fromMock = vi.fn().mockImplementation((table: string) => {
-    if (table === 'books') {
+    if (table === 'series') {
+      // findExistingBook: series.select('id').eq(title).eq(author).maybeSingle()
+      // デフォルトでは series ヒットなし (null) → findExistingBook が null を返し
+      // insertBook 経路に進む。
+      const seriesResult = handlers.series?.maybeSingle ?? { data: null, error: null }
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
-              is: vi
-                .fn()
-                .mockReturnValue(
-                  Promise.resolve(handlers.books?.select ?? { data: [], error: null }),
-                ),
-              eq: vi
-                .fn()
-                .mockReturnValue(
-                  Promise.resolve(handlers.books?.select ?? { data: [], error: null }),
-                ),
+              maybeSingle: vi.fn().mockResolvedValue(seriesResult),
             }),
+          }),
+        }),
+      }
+    }
+    if (table === 'books') {
+      // findExistingBook 後半: books.select(...).eq(series_id).is/eq(volume_number)
+      const booksResult = handlers.books?.select ?? { data: [], error: null }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            is: vi.fn().mockResolvedValue(booksResult),
+            eq: vi.fn().mockResolvedValue(booksResult),
           }),
         }),
       }
@@ -138,7 +148,12 @@ describe('processScrapePayload', () => {
 
       await processScrapePayload(supabase, userId, books)
 
-      expect(supabase.from).toHaveBeenCalledWith('books')
+      // 新規 series が RPC に trim 済みの値で渡ることを確認
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({ p_title: 'テスト', p_author: '著者' }),
+      )
     })
 
     it('リクエスト内の重複書籍を排除する', async () => {
@@ -293,20 +308,20 @@ describe('processScrapePayload', () => {
     it('異なるストアで既に所持している場合は duplicates に含める', async () => {
       const existingBookId = 'existing-book-id'
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: existingBookId,
                 series_id: 'series-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
                 store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,
@@ -337,20 +352,20 @@ describe('processScrapePayload', () => {
     it('同一ストアの再送信は重複扱いにしない（冪等性）', async () => {
       const existingBookId = 'existing-book-id'
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: existingBookId,
                 series_id: 'series-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
                 store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,
@@ -453,20 +468,20 @@ describe('processScrapePayload', () => {
 
     it('user_books UPSERT 失敗時にエラーを throw する', async () => {
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: 'book-1',
                 series_id: 'series-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
                 store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,

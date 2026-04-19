@@ -55,8 +55,8 @@ export async function registerBook(
   return {
     book: {
       id: bookRow.id,
-      title: bookRow.title,
-      author: bookRow.author,
+      title: bookRow.series.title,
+      author: bookRow.series.author,
       volumeNumber: bookRow.volume_number,
       thumbnailUrl: bookRow.thumbnail_url,
       isbn: bookRow.isbn,

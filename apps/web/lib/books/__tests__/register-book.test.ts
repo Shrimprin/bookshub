@@ -64,14 +64,17 @@ const validInput: RegisterBook = {
 
 const mockBookRow = {
   id: 'book-1',
-  title: 'ワンピース',
-  author: '尾田栄一郎',
+  series_id: 'series-1',
   volume_number: 107,
   thumbnail_url: null,
   isbn: null,
   published_at: null,
   is_adult: false,
   store_product_id: 'B0ABCDEFGH',
+  series: {
+    title: 'ワンピース',
+    author: '尾田栄一郎',
+  },
 }
 
 // --- Tests ---

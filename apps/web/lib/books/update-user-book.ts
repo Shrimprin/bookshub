@@ -9,8 +9,6 @@ interface UserBookWithBooks {
   created_at: string
   books: {
     id: string
-    title: string
-    author: string
     volume_number: number | null
     thumbnail_url: string | null
     isbn: string | null
@@ -18,6 +16,10 @@ interface UserBookWithBooks {
     is_adult: boolean
     store_product_id: string | null
     created_at: string
+    series: {
+      title: string
+      author: string
+    }
   }
 }
 
@@ -38,7 +40,7 @@ export async function updateUserBook(
     .eq('id', userBookId)
     .eq('user_id', userId)
     .select(
-      'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at)',
+      'id, store, created_at, books!inner(id, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at, series!inner(title, author))',
     )
     .single()
 
@@ -57,8 +59,8 @@ export async function updateUserBook(
 
   return {
     id: row.books.id,
-    title: row.books.title,
-    author: row.books.author,
+    title: row.books.series.title,
+    author: row.books.series.author,
     volumeNumber: row.books.volume_number,
     thumbnailUrl: row.books.thumbnail_url,
     isbn: row.books.isbn,
