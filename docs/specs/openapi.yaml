@@ -761,8 +761,14 @@ components:
         store:
           $ref: '#/components/schemas/Store'
         storeProductId:
-          type: string
-          nullable: true
+          # OpenAPI 3.1 / JSON Schema 2020-12 準拠の null 型表現 (3.0 の `nullable: true` は廃止)。
+          # ScrapeBook 側 (scrape 入力) と同じ制約 (min/max/pattern) を DB CHECK と整合させて強制する。
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_.-]+$'
           description: ストア固有の商品ID（Amazon ASIN / DMM コンテンツID 等）。NULL 可。`buildStoreUrl` で deep link を生成
           example: B0CXXXXXX1
         userBookCreatedAt:
