@@ -7,11 +7,12 @@ BookHub の Supabase PostgreSQL スキーマ定義。全テーブルは Row Leve
 ## Table of Contents
 
 1. [profiles](#profiles-ユーザープロフィール)
-2. [books](#books-書籍マスタ)
-3. [user_books](#user_books-ユーザー所持情報)
-4. [Migration History](#migration-history)
-5. [Row Level Security (RLS)](#row-level-security)
-6. [Query Examples](#query-examples)
+2. [series](#series-シリーズマスタ)
+3. [books](#books-書籍マスタ)
+4. [user_books](#user_books-ユーザー所持情報)
+5. [Migration History](#migration-history)
+6. [Row Level Security (RLS)](#row-level-security)
+7. [Query Examples](#query-examples)
 
 ---
 
@@ -59,6 +60,45 @@ CREATE TRIGGER on_auth_user_created
 
 ---
 
+## series（シリーズマスタ）
+
+全ユーザー共有のシリーズマスタ。**1 レコード = 1 シリーズ** を表します。`books` が `series_id` で参照する正規化された親テーブルです。
+
+### 背景
+
+当初は `books.(title, author)` でシリーズを識別していましたが、以下のためシリーズを切り出しました:
+
+- シリーズ単位のメタ情報（完結フラグ、次巻予定日、`is_adult` のシリーズ昇格等）を保持する素地が必要
+- シリーズ一覧 → 巻詳細の二階層 UI（別 issue）の前提
+
+### スキーマ
+
+| カラム       | 型          | 制約                          | 説明                                                                  |
+| ------------ | ----------- | ----------------------------- | --------------------------------------------------------------------- |
+| `id`         | uuid        | PK, DEFAULT gen_random_uuid() | シリーズ ID                                                           |
+| `title`      | text        | NOT NULL                      | シリーズタイトル（巻番号を除いたもの）。`extractSeriesTitle` 正規化済 |
+| `author`     | text        | NOT NULL                      | シリーズ著者名                                                        |
+| `created_at` | timestamptz | NOT NULL, DEFAULT now()       | 作成日時                                                              |
+
+### 制約
+
+| 制約名                       | 種別   | 条件            | 用途                   |
+| ---------------------------- | ------ | --------------- | ---------------------- |
+| `series_title_author_unique` | UNIQUE | (title, author) | 同一シリーズの重複防止 |
+
+### インデックス
+
+`series_title_author_unique` (UNIQUE制約) が `(title, author)` B-tree 索引を兼ねるため追加インデックスなし。
+
+### RLS ポリシー
+
+- **SELECT**: 認証済みユーザーは全件参照可 (`auth.role() = 'authenticated'`)
+- **INSERT**: 認証済みユーザーが追加可 (`auth.role() = 'authenticated'`)
+- **UPDATE**: 明示的に拒否 (`USING (false)`)
+- **DELETE**: 明示的に拒否 (`USING (false)`)
+
+---
+
 ## books（書籍マスタ）
 
 全ユーザー共有の書籍マスタ。**1 レコード = 1 冊（巻）** を表します。
@@ -72,38 +112,40 @@ CREATE TRIGGER on_auth_user_created
 
 ### スキーマ
 
-| カラム             | 型          | 制約                          | 説明                                                                              |
-| ------------------ | ----------- | ----------------------------- | --------------------------------------------------------------------------------- |
-| `id`               | uuid        | PK, DEFAULT gen_random_uuid() | 書籍 ID                                                                           |
-| `title`            | text        | NOT NULL                      | 作品タイトル                                                                      |
-| `author`           | text        | NOT NULL                      | 著者名                                                                            |
-| `volume_number`    | integer     | NULL可                        | 巻数。NULL = 単巻・一話完結作品。部分ユニークインデックスで NULL 同士の重複を防ぐ |
-| `thumbnail_url`    | text        | NULL可                        | 表紙画像 URL（巻ごとに異なる可能性あり）                                          |
-| `isbn`             | text        | NULL可                        | ISBN コード                                                                       |
-| `published_at`     | date        | NULL可                        | 出版日                                                                            |
-| `is_adult`         | boolean     | NOT NULL, DEFAULT false       | 成人向けフラグ（true の場合は本棚分離）                                           |
-| `store_product_id` | text        | NULL可                        | ストア固有の商品ID（例: Amazon ASIN, DMM コンテンツID）。deep link 派生に使用     |
-| `created_at`       | timestamptz | NOT NULL, DEFAULT now()       | 作成日時                                                                          |
+| カラム             | 型          | 制約                                           | 説明                                                                              |
+| ------------------ | ----------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `id`               | uuid        | PK, DEFAULT gen_random_uuid()                  | 書籍 ID                                                                           |
+| `series_id`        | uuid        | NOT NULL, FK → `series(id)` ON DELETE RESTRICT | シリーズ ID (正規化済)。books は必ず series に属する                              |
+| `title`            | text        | NOT NULL                                       | 作品タイトル (段階移行のため series との重複保持。将来削除予定)                   |
+| `author`           | text        | NOT NULL                                       | 著者名 (段階移行のため series との重複保持。将来削除予定)                         |
+| `volume_number`    | integer     | NULL可                                         | 巻数。NULL = 単巻・一話完結作品。部分ユニークインデックスで NULL 同士の重複を防ぐ |
+| `thumbnail_url`    | text        | NULL可                                         | 表紙画像 URL（巻ごとに異なる可能性あり）                                          |
+| `isbn`             | text        | NULL可                                         | ISBN コード                                                                       |
+| `published_at`     | date        | NULL可                                         | 出版日                                                                            |
+| `is_adult`         | boolean     | NOT NULL, DEFAULT false                        | 成人向けフラグ（true の場合は本棚分離）                                           |
+| `store_product_id` | text        | NULL可                                         | ストア固有の商品ID（例: Amazon ASIN, DMM コンテンツID）。deep link 派生に使用     |
+| `created_at`       | timestamptz | NOT NULL, DEFAULT now()                        | 作成日時                                                                          |
 
 ### 制約
 
 | 制約名                          | 種別  | 条件                                                                      | 用途                                                            |
 | ------------------------------- | ----- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `books_store_product_id_format` | CHECK | `store_product_id IS NULL OR store_product_id ~ '^[A-Za-z0-9_.-]{1,64}$'` | アプリ層の Zod バリデーションと同等の文字種制限を DB 側でも強制 |
+| `books_series_id_fk`            | FK    | `series_id REFERENCES series(id) ON DELETE RESTRICT`                      | 参照整合性。参照中の series は削除不可                          |
 
 その他の重複防止は部分ユニークインデックスで実装（下記）。
 
 ### インデックス
 
-| インデックス                 | カラム                         | 条件                               | 用途                                   |
-| ---------------------------- | ------------------------------ | ---------------------------------- | -------------------------------------- |
-| `books_single_volume_unique` | (title, author)                | WHERE volume_number IS NULL        | 単巻作品の重複登録防止                 |
-| `books_multi_volume_unique`  | (title, author, volume_number) | WHERE volume_number IS NOT NULL    | 複数巻作品の巻ごとの重複登録防止       |
-| `idx_books_title_author`     | (title, author)                | —                                  | シリーズ単位の検索                     |
-| `idx_books_title`            | (title)                        | —                                  | タイトル検索（LIKE %）                 |
-| `books_store_product_id_idx` | (store_product_id)             | WHERE store_product_id IS NOT NULL | ストア商品ID からの逆引き（deep link） |
+| インデックス                        | カラム                     | 条件                               | 用途                                       |
+| ----------------------------------- | -------------------------- | ---------------------------------- | ------------------------------------------ |
+| `books_series_single_volume_unique` | (series_id)                | WHERE volume_number IS NULL        | 単巻作品の重複登録防止（シリーズ正規化後） |
+| `books_series_multi_volume_unique`  | (series_id, volume_number) | WHERE volume_number IS NOT NULL    | 複数巻作品の巻ごとの重複登録防止           |
+| `idx_books_title_author`            | (title, author)            | —                                  | シリーズ単位の検索 (段階移行中のため残置)  |
+| `idx_books_title`                   | (title)                    | —                                  | タイトル検索（LIKE %）                     |
+| `books_store_product_id_idx`        | (store_product_id)         | WHERE store_product_id IS NOT NULL | ストア商品ID からの逆引き（deep link）     |
 
-**背景**: PostgreSQL の UNIQUE 制約では `NULL = NULL` が偽なので、`volume_number IS NULL` の単巻作品を何件でも登録できてしまいます。部分ユニークインデックスを使用することで、単巻作品の重複を確実に防ぎます。
+**背景**: PostgreSQL の UNIQUE 制約では `NULL = NULL` が偽なので、`volume_number IS NULL` の単巻作品を何件でも登録できてしまいます。部分ユニークインデックスを使用することで、単巻作品の重複を確実に防ぎます。`(series_id)` / `(series_id, volume_number)` が B-tree 索引を兼ねるため、追加の単独 `series_id` インデックスは不要です。
 
 **注**: 大文字小文字非対応の LIKE 検索に対応するには、`pg_trgm` 拡張と GIN インデックスを検討（フェーズ2以降）。
 
@@ -174,6 +216,7 @@ CREATE TRIGGER user_books_updated_at
 | `20260411000002` | `fix_books_unique_constraint`  | ✓       | books テーブルの UNIQUE 制約を部分インデックスに変更                 |
 | `20260418000000` | `books_store_product_id`       | ✓       | `books.store_product_id` カラム追加 (ASIN / DMM コンテンツID 永続化) |
 | `20260419000000` | `books_store_product_id_check` | ✓       | `store_product_id` に文字種 CHECK 制約を追加 (defense in depth)      |
+| `20260419000001` | `introduce_series`             | ✓       | `series` テーブル導入 + `books.series_id` バックフィル + UNIQUE 更新 |
 
 ---
 
@@ -191,9 +234,18 @@ CREATE TRIGGER user_books_updated_at
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
+│                         series                               │
+│  - SELECT: auth.role() = 'authenticated'  （全ユーザー読み取り）│
+│  - INSERT: auth.role() = 'authenticated'  （全ユーザー追加）    │
+│  - UPDATE/DELETE: USING (false)  （明示的に拒否）              │
+│  （共有マスタデータ）                                         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
 │                          books                               │
 │  - SELECT: auth.role() = 'authenticated'  （全ユーザー読み取り）│
 │  - INSERT: auth.role() = 'authenticated'  （全ユーザー追加）    │
+│  - UPDATE/DELETE: USING (false)  （明示的に拒否）              │
 │  （共有マスタデータ）                                         │
 └─────────────────────────────────────────────────────────────┘
 
@@ -303,10 +355,11 @@ SELECT COUNT(*) FROM user_books;
 
 ## フェーズ2 以降での検討事項
 
-| 検討項目                   | 理由                                   | 優先度 |
-| -------------------------- | -------------------------------------- | ------ |
-| `authors` テーブル分割     | 著者プロフィール、複数著者対応         | Low    |
-| `series` テーブル分割      | シリーズメタデータ（完結フラグ等）管理 | Low    |
-| 全文検索インデックス       | 大文字小文字非対応の LIKE 検索改善     | Medium |
-| books の管理者審査フロー   | 品質管理、スパムデータ削減             | Medium |
-| ソフトデリート（論理削除） | 削除履歴の監査                         | Low    |
+| 検討項目                            | 理由                                            | 優先度 |
+| ----------------------------------- | ----------------------------------------------- | ------ |
+| `authors` テーブル分割              | 著者プロフィール、複数著者対応                  | Low    |
+| `series` メタ情報拡張               | 完結フラグ、次巻予定日、is_adult のシリーズ昇格 | Medium |
+| `books.title` / `books.author` 削除 | `series` 正規化完了後、重複保持を解消           | Low    |
+| 全文検索インデックス                | 大文字小文字非対応の LIKE 検索改善              | Medium |
+| books の管理者審査フロー            | 品質管理、スパムデータ削減                      | Medium |
+| ソフトデリート（論理削除）          | 削除履歴の監査                                  | Low    |

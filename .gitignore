@@ -40,3 +40,6 @@ Thumbs.db
 TODO_*.md
 
 .local/
+
+# Claude Code local state (session memory, settings.local.json)
+.claude/
