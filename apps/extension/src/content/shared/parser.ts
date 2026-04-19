@@ -16,45 +16,67 @@ function normalizeDigits(text: string): string {
   )
 }
 
-// 巻数抽出パターン。`\d+` で完全な数字シーケンスをキャプチャしてから
-// 後段で 1-9999 (shared schema の制約) に合致するか検証する。
-// `\d{1,4}` のような桁数制限を正規表現側に置くと、`12345巻` の 2345 のように
-// 部分マッチを誤って採用するリスクがあるため避ける。
-const VOLUME_PATTERNS: RegExp[] = [
-  /\s*第(\d+)巻/,
-  /\s*(\d+)巻/,
+// Amazon Kindle / コミック系ストアの出版社ラベル (末尾のカッコ) を除去する。
+// 例: 「チェンソーマン 10 (ジャンプコミックスDIGITAL)」 → 「チェンソーマン 10」
+// 巻情報マッチング (数字のみのカッコ) を誤検知しないよう、コミック・文庫・
+// ブックス・ライブラリ・DIGITAL のいずれかを含むラベルに限定する。
+function stripTrailingLabel(text: string): string {
+  return text
+    .replace(
+      /\s*[（(][^（(）)]*(?:コミック|文庫|ブックス|ライブラリ|DIGITAL)[^（(）)]*[）)]\s*$/i,
+      '',
+    )
+    .trim()
+}
+
+// 巻数抽出と strip の規則ペア。extract で一致した最初の規則で巻数を決定し、
+// 同じ規則の strip で series title から数字以降をまとめて除去する。
+// `\d+` で完全な数字シーケンスをキャプチャしてから後段で 1-9999 (shared schema
+// の制約) に合致するか検証する。
+const VOLUME_RULES: Array<{ extract: RegExp; strip: RegExp }> = [
+  { extract: /\s*第(\d+)巻/, strip: /\s*第\d+巻.*/ },
+  { extract: /\s*(\d+)巻/, strip: /\s*\d+巻.*/ },
   // paren パターンのみ \d{1,3} で年号 (2024) や特典コード (12345) を排除
-  /[（(](\d{1,3})[）)]/,
-  /\s+Vol\.(\d+)/i,
-  /\s+vol\s+(\d+)/i,
-  // フォールバック: タイトル末尾の裸の数字 (例: 「チェンソーマン 17」)
+  { extract: /[（(](\d{1,3})[）)]/, strip: /\s*[（(]\d{1,3}[）)].*/ },
+  { extract: /\s+Vol\.(\d+)/i, strip: /\s+Vol\.\d+.*/i },
+  { extract: /\s+vol\s+(\d+)/i, strip: /\s+vol\s+\d+.*/i },
+  // 末尾の裸の数字 (例: 「チェンソーマン 17」)
   // 先頭 3 文字以上のテキストが必要なので「3月のライオン」等の誤検知を避ける
-  /.{3,}\s+(\d{1,3})$/,
+  { extract: /.{3,}\s+(\d{1,3})$/, strip: /\s+\d{1,3}$/ },
+  // タイトル途中の裸の数字 (Amazon Kindle でシリーズ名が巻数後に繰り返される特有パターン)
+  // 例: 「東京喰種トーキョーグール 1 東京喰種トーキョーグール リマスター版」
+  { extract: /^.{3,}?\s+(\d{1,3})\s+\S/, strip: /\s+\d{1,3}\s+.*/ },
 ]
 
 const MIN_VOLUME = 1
 const MAX_VOLUME = 9999
 
-export function extractVolumeNumber(title: string): number | undefined {
-  const normalized = normalizeDigits(title)
-  for (const pattern of VOLUME_PATTERNS) {
-    const match = normalized.match(pattern)
+function findVolumeRule(
+  title: string,
+): { rule: (typeof VOLUME_RULES)[number]; volume: number } | undefined {
+  const cleaned = stripTrailingLabel(normalizeDigits(title))
+  for (const rule of VOLUME_RULES) {
+    const match = cleaned.match(rule.extract)
     if (match?.[1]) {
       const volume = Number.parseInt(match[1], 10)
-      // shared schema の制約 (1..9999) に合致しない値は弾く
       if (Number.isInteger(volume) && volume >= MIN_VOLUME && volume <= MAX_VOLUME) {
-        return volume
+        return { rule, volume }
       }
     }
   }
   return undefined
 }
 
-export function extractSeriesTitle(title: string): string {
-  let cleaned = normalizeDigits(title)
+export function extractVolumeNumber(title: string): number | undefined {
+  return findVolumeRule(title)?.volume
+}
 
-  for (const pattern of VOLUME_PATTERNS) {
-    cleaned = cleaned.replace(pattern, '')
+export function extractSeriesTitle(title: string): string {
+  let cleaned = stripTrailingLabel(normalizeDigits(title))
+
+  const matched = findVolumeRule(title)
+  if (matched) {
+    cleaned = cleaned.replace(matched.rule.strip, '')
   }
 
   // 「特装版」等の巻数後の修飾語も除去
