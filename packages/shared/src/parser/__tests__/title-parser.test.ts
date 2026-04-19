@@ -107,6 +107,14 @@ describe('extractSeriesTitle', () => {
     expect(extractSeriesTitle(title)).toBe(expected)
   })
 
+  it.each([
+    // 全角ラベル (扶桑社ＢＯＯＫＳ など) も normalizeWidth 経由で剥がれる
+    ['ギズモード・ジャパンのテック教室 (扶桑社ＢＯＯＫＳ)', 'ギズモード・ジャパンのテック教室'],
+    ['テスト作品 3 (ＤＩＧＩＴＡＬ版)', 'テスト作品'],
+  ])('全角ラベル "%s" → "%s"', (title, expected) => {
+    expect(extractSeriesTitle(title)).toBe(expected)
+  })
+
   it('単巻作品はそのまま返す', () => {
     expect(extractSeriesTitle('火花')).toBe('火花')
   })

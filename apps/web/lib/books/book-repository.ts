@@ -9,6 +9,7 @@ export interface BookRow {
   published_at: string | null
   is_adult: boolean
   store_product_id: string | null
+  created_at: string
   // PostgREST embed で series から JOIN 取得する
   series: { title: string; author: string }
 }
@@ -28,7 +29,7 @@ interface InsertBookInput {
 // `series:series_id(title, author)` は FK (books.series_id → series.id) 経由の
 // PostgREST embed で、レスポンスで `series: { title, author }` 形に入れ子展開される。
 const BOOK_COLUMNS =
-  'id, series_id, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, series:series_id(title, author)'
+  'id, series_id, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at, series:series_id(title, author)'
 
 export function normalizeText(text: string): string {
   return text.trim().normalize('NFC')

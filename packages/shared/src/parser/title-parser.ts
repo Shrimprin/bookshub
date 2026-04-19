@@ -8,22 +8,30 @@ export interface RawBookData {
   storeProductId?: string
 }
 
-// 全角数字 ０-９ (U+FF10-U+FF19) を半角 0-9 (U+0030-U+0039) に正規化する
-// Amazon Kindle のタイトルは全角半角が混在するため (例: 「僕らはみんな河合荘（６）」)
-function normalizeDigits(text: string): string {
-  return text.replace(/[\uFF10-\uFF19]/g, (ch) =>
-    String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30),
-  )
+// 全角英数字を半角に正規化する。
+//   - 全角数字 ０-９ (U+FF10-U+FF19) → 半角 0-9 (U+0030-U+0039)
+//   - 全角大文字 Ａ-Ｚ (U+FF21-U+FF3A) → 半角 A-Z (U+0041-U+005A)
+//   - 全角小文字 ａ-ｚ (U+FF41-U+FF5A) → 半角 a-z (U+0061-U+007A)
+// Amazon Kindle のタイトルは全角半角が混在するため
+// (例: 「僕らはみんな河合荘（６）」「ギズモード・ジャパンのテック教室 (扶桑社ＢＯＯＫＳ)」)
+function normalizeWidth(text: string): string {
+  return text.replace(/[\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A]/g, (ch) => {
+    const code = ch.charCodeAt(0)
+    if (code <= 0xff19) return String.fromCharCode(code - 0xff10 + 0x30) // digits
+    if (code <= 0xff3a) return String.fromCharCode(code - 0xff21 + 0x41) // uppercase
+    return String.fromCharCode(code - 0xff41 + 0x61) // lowercase
+  })
 }
 
 // Amazon Kindle / コミック系ストアの出版社ラベル (末尾のカッコ) を除去する。
 // 例: 「チェンソーマン 10 (ジャンプコミックスDIGITAL)」 → 「チェンソーマン 10」
+// 例: 「テック教室 (扶桑社ＢＯＯＫＳ)」 → normalizeWidth で BOOKS になってから match
 // 巻情報マッチング (数字のみのカッコ) を誤検知しないよう、コミック・文庫・
-// ブックス・ライブラリ・DIGITAL のいずれかを含むラベルに限定する。
+// ブックス・ライブラリ・DIGITAL / BOOKS のいずれかを含むラベルに限定する。
 function stripTrailingLabel(text: string): string {
   return text
     .replace(
-      /\s*[（(][^（(）)]*(?:コミック|文庫|ブックス|ライブラリ|DIGITAL)[^（(）)]*[）)]\s*$/i,
+      /\s*[（(][^（(）)]*(?:コミック|文庫|ブックス|ライブラリ|DIGITAL|BOOKS)[^（(）)]*[）)]\s*$/i,
       '',
     )
     .trim()
@@ -54,7 +62,7 @@ const MAX_VOLUME = 9999
 function findVolumeRule(
   title: string,
 ): { rule: (typeof VOLUME_RULES)[number]; volume: number } | undefined {
-  const cleaned = stripTrailingLabel(normalizeDigits(title))
+  const cleaned = stripTrailingLabel(normalizeWidth(title))
   for (const rule of VOLUME_RULES) {
     const match = cleaned.match(rule.extract)
     if (match?.[1]) {
@@ -72,7 +80,7 @@ export function extractVolumeNumber(title: string): number | undefined {
 }
 
 export function extractSeriesTitle(title: string): string {
-  let cleaned = stripTrailingLabel(normalizeDigits(title))
+  let cleaned = stripTrailingLabel(normalizeWidth(title))
 
   const matched = findVolumeRule(title)
   if (matched) {

@@ -30,6 +30,12 @@ DROP INDEX IF EXISTS public.idx_books_title_author;
 -- Step 2: RPC を title/author を books に書き込まない形に置換
 --   順序が重要: DROP COLUMN 前に RPC body から title/author 参照を除かないと
 --   依存検出で失敗する可能性がある。
+--
+--   注: この時点の body にある `ON CONFLICT (title, author) DO UPDATE SET
+--   title = EXCLUDED.title` は series の UPDATE RLS ポリシー USING(false) と
+--   衝突して実行時 403 になる既知バグを持つ。本マイグレーション適用後、
+--   20260419000006_fix_rpc_on_conflict_update.sql で DO NOTHING + SELECT
+--   fallback に修正される。
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.upsert_book_with_series(
   p_title            text,

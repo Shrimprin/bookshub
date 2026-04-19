@@ -272,8 +272,13 @@ ALTER TABLE public.series
   DROP COLUMN _new_volume_number;
 
 -- ============================================================
+-- 本番適用前の前提条件 (必須):
+--   1. Supabase Dashboard > Database > Backups で Point-in-Time Recovery
+--      スナップショットを取得済みであること。
+--   2. メンテナンス時間帯に実行。scrape 書き込みと競合しうる。
+--
 -- Rollback runbook:
 --   このマイグレーションは破壊的 (series 統合・book 削除) のため
---   完全な rollback は不可能。バックアップから series / books / user_books を
---   復元すること。
+--   完全な rollback は不可能。Point-in-Time Recovery から series / books /
+--   user_books を復元すること。
 -- ============================================================

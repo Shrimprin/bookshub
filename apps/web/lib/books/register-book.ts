@@ -68,7 +68,9 @@ export async function registerBook(
       isbn: bookRow.isbn,
       publishedAt: bookRow.published_at,
       isAdult: bookRow.is_adult,
-      createdAt: userBook.created_at,
+      // createdAt は書籍マスタ側の created_at (get-user-books と整合)。
+      // 所持情報側の created_at は userBookCreatedAt に別フィールドで返す。
+      createdAt: bookRow.created_at,
       userBookId: userBook.id,
       store: userBook.store as Store,
       storeProductId: bookRow.store_product_id,

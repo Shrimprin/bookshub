@@ -285,9 +285,15 @@ ALTER TABLE public.books
 -- _merge_map は ON COMMIT DROP で自動削除される。
 
 -- ============================================================
+-- 本番適用前の前提条件 (必須):
+--   1. Supabase Dashboard > Database > Backups で Point-in-Time Recovery
+--      スナップショットを取得済みであること (適用直前に手動 snapshot 推奨)。
+--   2. メンテナンス時間帯 / 低トラフィック時間に実行すること (scrape 書き込みと
+--      競合する可能性あり)。
+--
 -- Rollback runbook (Supabase は down migration を管理しないため手動実行):
 --
 -- このマイグレーションは破壊的 (books の title/volume_number を書き換え、
--- 旧 series を削除) なので完全な rollback は不可能。バックアップから
--- books / user_books / series を復元すること。
+-- loser books を物理削除、旧 series を全削除) なので完全な rollback は不可能。
+-- Point-in-Time Recovery から books / user_books / series を復元すること。
 -- ============================================================

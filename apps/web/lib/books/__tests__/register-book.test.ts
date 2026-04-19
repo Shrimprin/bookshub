@@ -71,6 +71,7 @@ const mockBookRow = {
   published_at: null,
   is_adult: false,
   store_product_id: 'B0ABCDEFGH',
+  created_at: '2024-01-01T00:00:00Z',
   series: {
     title: 'ワンピース',
     author: '尾田栄一郎',
