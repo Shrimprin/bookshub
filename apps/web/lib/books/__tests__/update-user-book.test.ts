@@ -30,8 +30,6 @@ const updatedRecord = {
   created_at: '2024-01-01T00:00:00Z',
   books: {
     id: 'book-1',
-    title: 'ワンピース',
-    author: '尾田栄一郎',
     volume_number: 107,
     thumbnail_url: null,
     isbn: null,
@@ -39,6 +37,10 @@ const updatedRecord = {
     is_adult: false,
     store_product_id: 'B0ABCDEFGH',
     created_at: '2024-01-01T00:00:00Z',
+    series: {
+      title: 'ワンピース',
+      author: '尾田栄一郎',
+    },
   },
 }
 

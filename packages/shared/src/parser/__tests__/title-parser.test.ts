@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import type { Store } from '@bookhub/shared'
-import { extractVolumeNumber, extractSeriesTitle, parseBooks, type RawBookData } from '../parser.js'
+import type { Store } from '../../schemas/book-schema.js'
+import {
+  extractVolumeNumber,
+  extractSeriesTitle,
+  parseBooks,
+  type RawBookData,
+} from '../title-parser.js'
 
 describe('extractVolumeNumber', () => {
   it.each([
@@ -30,6 +35,19 @@ describe('extractVolumeNumber', () => {
     ['アニメ化記念版(2024)', undefined],
     ['特典コード付き（12345）', undefined],
   ])('年号・コード "%s" は巻数として抽出しない → %s', (title, expected) => {
+    expect(extractVolumeNumber(title)).toBe(expected)
+  })
+
+  it.each([
+    ['チェンソーマン 10 (ジャンプコミックスDIGITAL)', 10],
+    ['呪術廻戦 10 (ジャンプコミックスDIGITAL)', 10],
+    ['バクマン。 モノクロ版 4 (ジャンプコミックスDIGITAL)', 4],
+    ['東京喰種トーキョーグール:re 1 (ヤングジャンプコミックスDIGITAL)', 1],
+    [
+      '東京喰種トーキョーグール 1 東京喰種トーキョーグール リマスター版 (ヤングジャンプコミックスDIGITAL)',
+      1,
+    ],
+  ])('Kindle ラベル付き "%s" → %i', (title, expected) => {
     expect(extractVolumeNumber(title)).toBe(expected)
   })
 
@@ -66,16 +84,47 @@ describe('extractSeriesTitle', () => {
     ['進撃の巨人 34巻 特装版', '進撃の巨人'],
     ['ONE PIECE Vol.107', 'ONE PIECE'],
     ['3月のライオン 18巻', '3月のライオン'],
-    [
-      '僕らはみんな河合荘（６） (ヤングキングコミックス)',
-      '僕らはみんな河合荘 (ヤングキングコミックス)',
-    ],
+    // Kindle のコミック系ラベル (...コミック... / ...DIGITAL 等) は末尾除去される
+    ['僕らはみんな河合荘（６） (ヤングキングコミックス)', '僕らはみんな河合荘'],
   ])('"%s" → "%s"', (title, expected) => {
+    expect(extractSeriesTitle(title)).toBe(expected)
+  })
+
+  it.each([
+    ['チェンソーマン 10 (ジャンプコミックスDIGITAL)', 'チェンソーマン'],
+    ['呪術廻戦 10 (ジャンプコミックスDIGITAL)', '呪術廻戦'],
+    ['バクマン。 モノクロ版 4 (ジャンプコミックスDIGITAL)', 'バクマン。 モノクロ版'],
+    [
+      '東京喰種トーキョーグール:re 1 (ヤングジャンプコミックスDIGITAL)',
+      '東京喰種トーキョーグール:re',
+    ],
+    [
+      // 巻数後にシリーズ名が繰り返される Amazon Kindle 特有パターン
+      '東京喰種トーキョーグール 1 東京喰種トーキョーグール リマスター版 (ヤングジャンプコミックスDIGITAL)',
+      '東京喰種トーキョーグール',
+    ],
+  ])('Kindle ラベル付き "%s" → "%s"', (title, expected) => {
+    expect(extractSeriesTitle(title)).toBe(expected)
+  })
+
+  it.each([
+    // 全角ラベル (扶桑社ＢＯＯＫＳ など) も normalizeWidth 経由で剥がれる
+    ['ギズモード・ジャパンのテック教室 (扶桑社ＢＯＯＫＳ)', 'ギズモード・ジャパンのテック教室'],
+    ['テスト作品 3 (ＤＩＧＩＴＡＬ版)', 'テスト作品'],
+  ])('全角ラベル "%s" → "%s"', (title, expected) => {
     expect(extractSeriesTitle(title)).toBe(expected)
   })
 
   it('単巻作品はそのまま返す', () => {
     expect(extractSeriesTitle('火花')).toBe('火花')
+  })
+
+  it('巻数を含まないラベル付き単巻は本体のみ残す', () => {
+    expect(
+      extractSeriesTitle(
+        '僕らはみんな河合荘 コレクションBOOK 入居の手引き (ヤングキングコミックス)',
+      ),
+    ).toBe('僕らはみんな河合荘 コレクションBOOK 入居の手引き')
   })
 })
 

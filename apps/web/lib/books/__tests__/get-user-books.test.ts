@@ -42,8 +42,6 @@ const mockBookRow = {
   created_at: '2024-03-04T00:00:00Z',
   books: {
     id: 'book-1',
-    title: 'ワンピース',
-    author: '尾田栄一郎',
     volume_number: 107,
     thumbnail_url: 'https://example.com/cover.jpg',
     isbn: '9784088835099',
@@ -51,6 +49,10 @@ const mockBookRow = {
     is_adult: false,
     store_product_id: 'B0ABCDEFGH',
     created_at: '2024-01-01T00:00:00Z',
+    series: {
+      title: 'ワンピース',
+      author: '尾田栄一郎',
+    },
   },
 }
 
@@ -127,7 +129,7 @@ describe('getUserBooks', () => {
 
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%ワンピ%",author.ilike."%ワンピ%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 
@@ -138,7 +140,7 @@ describe('getUserBooks', () => {
 
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%foo,bar%",author.ilike."%foo,bar%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 
@@ -149,7 +151,7 @@ describe('getUserBooks', () => {
 
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%(23)%",author.ilike."%(23)%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 
@@ -163,7 +165,7 @@ describe('getUserBooks', () => {
     //   その \ が SQL LIKE の escape char として % / _ を literal 化する)
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%50\\\\%\\\\_off%",author.ilike."%50\\\\%\\\\_off%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 
@@ -175,7 +177,7 @@ describe('getUserBooks', () => {
     // a\b → LIKE: a\\b (\ が escape 用に重なる) → PostgREST " 内: \\ → \\\\
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%a\\\\\\\\b%",author.ilike."%a\\\\\\\\b%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 
@@ -186,7 +188,7 @@ describe('getUserBooks', () => {
 
     expect(supabase._builder.or).toHaveBeenCalledWith(
       'title.ilike."%a\\"b%",author.ilike."%a\\"b%"',
-      { referencedTable: 'books' },
+      { referencedTable: 'books.series' },
     )
   })
 

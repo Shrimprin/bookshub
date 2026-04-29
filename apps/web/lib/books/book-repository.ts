@@ -2,14 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface BookRow {
   id: string
-  title: string
-  author: string
+  series_id: string
   volume_number: number | null
   thumbnail_url: string | null
   isbn: string | null
   published_at: string | null
   is_adult: boolean
   store_product_id: string | null
+  created_at: string
+  // PostgREST embed で series から JOIN 取得する
+  series: { title: string; author: string }
 }
 
 interface InsertBookInput {
@@ -24,8 +26,10 @@ interface InsertBookInput {
   storeProductId?: string | undefined
 }
 
+// `series:series_id(title, author)` は FK (books.series_id → series.id) 経由の
+// PostgREST embed で、レスポンスで `series: { title, author }` 形に入れ子展開される。
 const BOOK_COLUMNS =
-  'id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id'
+  'id, series_id, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at, series:series_id(title, author)'
 
 export function normalizeText(text: string): string {
   return text.trim().normalize('NFC')
@@ -37,7 +41,19 @@ export async function findExistingBook(
   author: string,
   volumeNumber: number | undefined,
 ): Promise<BookRow | null> {
-  let query = supabase.from('books').select(BOOK_COLUMNS).eq('title', title).eq('author', author)
+  // series は (title, author) でユニーク。先に series.id を解決してから
+  // books.series_id + volume_number で検索する 2-query 構成。
+  const { data: seriesRow, error: seriesErr } = await supabase
+    .from('series')
+    .select('id')
+    .eq('title', title)
+    .eq('author', author)
+    .maybeSingle()
+
+  if (seriesErr) throw new Error(`series SELECT failed: ${seriesErr.message}`)
+  if (!seriesRow) return null
+
+  let query = supabase.from('books').select(BOOK_COLUMNS).eq('series_id', seriesRow.id)
 
   if (volumeNumber === undefined) {
     query = query.is('volume_number', null)
@@ -47,41 +63,38 @@ export async function findExistingBook(
 
   const { data, error } = await query
   if (error) throw new Error(`books SELECT failed: ${error.message}`)
-  return data && data.length > 0 ? (data[0] as BookRow) : null
+  return data && data.length > 0 ? (data[0] as unknown as BookRow) : null
 }
 
 export async function insertBook(
   supabase: SupabaseClient,
   book: InsertBookInput,
 ): Promise<BookRow> {
+  const normalizedTitle = normalizeText(book.title)
+  const normalizedAuthor = normalizeText(book.author)
+
+  // series と books を atomic に登録する RPC を呼ぶ (orphan series 対策)。
   const { data, error } = await supabase
-    .from('books')
-    .insert({
-      title: normalizeText(book.title),
-      author: normalizeText(book.author),
-      volume_number: book.volumeNumber ?? null,
-      thumbnail_url: book.thumbnailUrl ?? null,
-      isbn: book.isbn ?? null,
-      published_at: book.publishedAt ?? null,
-      is_adult: book.isAdult ?? false,
-      store_product_id: book.storeProductId ?? null,
+    .rpc('upsert_book_with_series', {
+      p_title: normalizedTitle,
+      p_author: normalizedAuthor,
+      p_volume_number: book.volumeNumber ?? null,
+      p_thumbnail_url: book.thumbnailUrl ?? null,
+      p_isbn: book.isbn ?? null,
+      p_published_at: book.publishedAt ?? null,
+      p_is_adult: book.isAdult ?? false,
+      p_store_product_id: book.storeProductId ?? null,
     })
-    .select(BOOK_COLUMNS)
+    .single()
 
-  if (error) {
-    if (error.code === '23505') {
-      const existing = await findExistingBook(
-        supabase,
-        normalizeText(book.title),
-        normalizeText(book.author),
-        book.volumeNumber,
-      )
-      if (existing) return existing
-    }
-    throw new Error(`books INSERT failed: ${error.message}`)
+  if (error) throw new Error(`upsert_book_with_series RPC failed: ${error.message}`)
+  if (!data) throw new Error('upsert_book_with_series returned no data — possible RLS issue')
+
+  // RPC の戻り値 (books 行) は title/author を持たないため、
+  // 入力の normalized 値を series ネストとして合成する。RPC は ON CONFLICT で
+  // 既存 series を再利用するので、ここでの値は DB 側の series.title/author と一致する。
+  return {
+    ...(data as Omit<BookRow, 'series'>),
+    series: { title: normalizedTitle, author: normalizedAuthor },
   }
-
-  const row = data && (data as BookRow[])[0]
-  if (!row) throw new Error('books INSERT returned no data — possible RLS issue')
-  return row
 }

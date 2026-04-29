@@ -4,64 +4,71 @@ import { processScrapePayload } from '../process-scrape'
 // --- Supabase mock helpers ---
 
 type MockRow = Record<string, unknown>
-type MockQueryResult = { data: MockRow[] | null; error: { message: string; code?: string } | null }
-
-function createMockQueryBuilder(result: MockQueryResult) {
-  const builder = {
-    select: vi.fn().mockReturnThis(),
-    insert: vi.fn().mockReturnThis(),
-    upsert: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    in: vi.fn().mockReturnThis(),
-    then: vi.fn().mockImplementation((resolve: (value: MockQueryResult) => void) => {
-      resolve(result)
-      return Promise.resolve(result)
-    }),
-  }
-  // Make the builder thenable
-  Object.defineProperty(builder, 'then', {
-    value: (resolve: (value: MockQueryResult) => void) => {
-      resolve(result)
-      return Promise.resolve(result)
-    },
-  })
-  return builder
+type MockSingleResult = {
+  data: MockRow | null
+  error: { message: string; code?: string } | null
 }
+type MockQueryResult = { data: MockRow[] | null; error: { message: string; code?: string } | null }
+type MockRpcResult = MockSingleResult
 
 function createMockSupabase(handlers: {
+  series?: { maybeSingle?: MockSingleResult }
   books?: {
     select?: MockQueryResult
-    insert?: MockQueryResult
   }
   user_books?: {
     select?: MockQueryResult
     upsert?: MockQueryResult
   }
+  rpc?: MockRpcResult | ((name: string, params: Record<string, unknown>) => MockRpcResult)
 }) {
+  const rpcMock = vi.fn().mockImplementation((name: string, params: Record<string, unknown>) => {
+    const resolved =
+      typeof handlers.rpc === 'function'
+        ? handlers.rpc(name, params)
+        : (handlers.rpc ?? {
+            data: {
+              id: 'default-book-id',
+              series_id: 'default-series-id',
+              volume_number: (params.p_volume_number as number | null) ?? null,
+              thumbnail_url: null,
+              isbn: null,
+              published_at: null,
+              is_adult: (params.p_is_adult as boolean) ?? false,
+              store_product_id: (params.p_store_product_id as string | null) ?? null,
+            },
+            error: null,
+          })
+    return {
+      single: vi.fn().mockResolvedValue(resolved),
+    }
+  })
+
   const fromMock = vi.fn().mockImplementation((table: string) => {
-    if (table === 'books') {
+    if (table === 'series') {
+      // findExistingBook: series.select('id').eq(title).eq(author).maybeSingle()
+      // デフォルトでは series ヒットなし (null) → findExistingBook が null を返し
+      // insertBook 経路に進む。
+      const seriesResult = handlers.series?.maybeSingle ?? { data: null, error: null }
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
-              is: vi
-                .fn()
-                .mockReturnValue(
-                  Promise.resolve(handlers.books?.select ?? { data: [], error: null }),
-                ),
-              eq: vi
-                .fn()
-                .mockReturnValue(
-                  Promise.resolve(handlers.books?.select ?? { data: [], error: null }),
-                ),
+              maybeSingle: vi.fn().mockResolvedValue(seriesResult),
             }),
           }),
         }),
-        insert: vi.fn().mockReturnValue({
-          select: vi
-            .fn()
-            .mockReturnValue(Promise.resolve(handlers.books?.insert ?? { data: [], error: null })),
+      }
+    }
+    if (table === 'books') {
+      // findExistingBook 後半: books.select(...).eq(series_id).is/eq(volume_number)
+      const booksResult = handlers.books?.select ?? { data: [], error: null }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            is: vi.fn().mockResolvedValue(booksResult),
+            eq: vi.fn().mockResolvedValue(booksResult),
+          }),
         }),
       }
     }
@@ -83,10 +90,10 @@ function createMockSupabase(handlers: {
           ),
       }
     }
-    return createMockQueryBuilder({ data: [], error: null })
+    return {}
   })
 
-  return { from: fromMock } as unknown as Parameters<typeof processScrapePayload>[0]
+  return { from: fromMock, rpc: rpcMock } as unknown as Parameters<typeof processScrapePayload>[0]
 }
 
 // --- Test data ---
@@ -114,23 +121,21 @@ describe('processScrapePayload', () => {
   describe('入力正規化', () => {
     it('title と author の前後空白を除去する', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: {
-            data: [
-              {
-                id: 'book-1',
-                title: 'テスト',
-                author: '著者',
-                volume_number: null,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-              },
-            ],
-            error: null,
+        books: { select: { data: [], error: null } },
+        rpc: {
+          data: {
+            id: 'book-1',
+            series_id: 'series-1',
+            title: 'テスト',
+            author: '著者',
+            volume_number: null,
+            thumbnail_url: null,
+            isbn: null,
+            published_at: null,
+            is_adult: false,
+            store_product_id: null,
           },
+          error: null,
         },
         user_books: {
           select: { data: [], error: null },
@@ -143,31 +148,31 @@ describe('processScrapePayload', () => {
 
       await processScrapePayload(supabase, userId, books)
 
-      // books テーブルへの SELECT で trim された値が使われる
-      const fromCalls = supabase.from.mock.calls
-      const booksCall = fromCalls.find((c) => c[0] === 'books')
-      expect(booksCall).toBeDefined()
+      // 新規 series が RPC に trim 済みの値で渡ることを確認
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({ p_title: 'テスト', p_author: '著者' }),
+      )
     })
 
     it('リクエスト内の重複書籍を排除する', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: {
-            data: [
-              {
-                id: 'book-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
-                volume_number: 107,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-              },
-            ],
-            error: null,
+        books: { select: { data: [], error: null } },
+        rpc: {
+          data: {
+            id: 'book-1',
+            series_id: 'series-1',
+            title: 'ワンピース',
+            author: '尾田栄一郎',
+            volume_number: 107,
+            thumbnail_url: null,
+            isbn: null,
+            published_at: null,
+            is_adult: false,
+            store_product_id: null,
           },
+          error: null,
         },
         user_books: {
           select: { data: [], error: null },
@@ -184,25 +189,23 @@ describe('processScrapePayload', () => {
   })
 
   describe('新規書籍の保存', () => {
-    it('新規書籍を books に INSERT し user_books に upsert する', async () => {
+    it('新規書籍を RPC で登録し user_books に upsert する', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: {
-            data: [
-              {
-                id: 'new-book-id',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
-                volume_number: 107,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-              },
-            ],
-            error: null,
+        books: { select: { data: [], error: null } },
+        rpc: {
+          data: {
+            id: 'new-book-id',
+            series_id: 'series-1',
+            title: 'ワンピース',
+            author: '尾田栄一郎',
+            volume_number: 107,
+            thumbnail_url: null,
+            isbn: null,
+            published_at: null,
+            is_adult: false,
+            store_product_id: null,
           },
+          error: null,
         },
         user_books: {
           select: { data: [], error: null },
@@ -216,26 +219,9 @@ describe('processScrapePayload', () => {
       expect(result.duplicates).toEqual([])
     })
 
-    it('isAdult フラグが books INSERT に反映される', async () => {
+    it('isAdult フラグが RPC に p_is_adult として渡る', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: {
-            data: [
-              {
-                id: 'adult-book-id',
-                title: 'テスト作品',
-                author: 'テスト著者',
-                volume_number: null,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: true,
-              },
-            ],
-            error: null,
-          },
-        },
+        books: { select: { data: [], error: null } },
         user_books: {
           select: { data: [], error: null },
         },
@@ -244,6 +230,77 @@ describe('processScrapePayload', () => {
       const result = await processScrapePayload(supabase, userId, [adultBook])
 
       expect(result.savedCount).toBe(1)
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({ p_is_adult: true }),
+      )
+    })
+  })
+
+  describe('series upsert (#31)', () => {
+    it('各書籍で upsert_book_with_series RPC が呼ばれる (series 自動作成)', async () => {
+      const supabase = createMockSupabase({
+        books: { select: { data: [], error: null } },
+        user_books: { select: { data: [], error: null } },
+      })
+
+      await processScrapePayload(supabase, userId, [singleBook])
+
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({
+          p_title: 'ワンピース',
+          p_author: '尾田栄一郎',
+          p_volume_number: 107,
+        }),
+      )
+    })
+
+    it('同一シリーズの複数巻は同じ series_id を持つ書籍として扱える', async () => {
+      const supabase = createMockSupabase({
+        books: { select: { data: [], error: null } },
+        user_books: { select: { data: [], error: null } },
+        rpc: (_name, params) => ({
+          // RPC は volume 毎に違う book id を返すが series_id は同じ
+          data: {
+            id: `book-vol-${params.p_volume_number}`,
+            series_id: 'series-onepiece',
+            title: params.p_title as string,
+            author: params.p_author as string,
+            volume_number: (params.p_volume_number as number | null) ?? null,
+            thumbnail_url: null,
+            isbn: null,
+            published_at: null,
+            is_adult: false,
+            store_product_id: null,
+          },
+          error: null,
+        }),
+      })
+
+      const books: ScrapeBook[] = [
+        { ...singleBook, volumeNumber: 107 },
+        { ...singleBook, volumeNumber: 108 },
+      ]
+
+      const result = await processScrapePayload(supabase, userId, books)
+
+      expect(result.savedCount).toBe(2)
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledTimes(2)
+    })
+
+    it('RPC エラー時にエラーが伝播する', async () => {
+      const supabase = createMockSupabase({
+        books: { select: { data: [], error: null } },
+        rpc: { data: null, error: { message: 'series RLS violation' } },
+      })
+
+      await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow(
+        'upsert_book_with_series RPC failed',
+      )
     })
   })
 
@@ -251,18 +308,20 @@ describe('processScrapePayload', () => {
     it('異なるストアで既に所持している場合は duplicates に含める', async () => {
       const existingBookId = 'existing-book-id'
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: existingBookId,
-                title: 'ワンピース',
-                author: '尾田栄一郎',
+                series_id: 'series-1',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
+                store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,
@@ -293,18 +352,20 @@ describe('processScrapePayload', () => {
     it('同一ストアの再送信は重複扱いにしない（冪等性）', async () => {
       const existingBookId = 'existing-book-id'
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: existingBookId,
-                title: 'ワンピース',
-                author: '尾田栄一郎',
+                series_id: 'series-1',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
+                store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,
@@ -328,52 +389,11 @@ describe('processScrapePayload', () => {
   })
 
   describe('storeProductId (#32)', () => {
-    it('storeProductId が books INSERT に store_product_id として渡る', async () => {
-      const insertSpy = vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue(
-          Promise.resolve({
-            data: [
-              {
-                id: 'book-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
-                volume_number: 107,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-                store_product_id: 'B0ABCDEFGH',
-              },
-            ],
-            error: null,
-          }),
-        ),
+    it('storeProductId が RPC に p_store_product_id として渡る', async () => {
+      const supabase = createMockSupabase({
+        books: { select: { data: [], error: null } },
+        user_books: { select: { data: [], error: null } },
       })
-
-      const supabase = {
-        from: vi.fn().mockImplementation((table: string) => {
-          if (table === 'books') {
-            return {
-              select: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    eq: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
-                  }),
-                }),
-              }),
-              insert: insertSpy,
-            }
-          }
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                in: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
-              }),
-            }),
-            upsert: vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null })),
-          }
-        }),
-      } as unknown as Parameters<typeof processScrapePayload>[0]
 
       const bookWithProductId: ScrapeBook = {
         ...singleBook,
@@ -382,61 +402,26 @@ describe('processScrapePayload', () => {
 
       await processScrapePayload(supabase, userId, [bookWithProductId])
 
-      expect(insertSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ store_product_id: 'B0ABCDEFGH' }),
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({ p_store_product_id: 'B0ABCDEFGH' }),
       )
     })
 
-    it('storeProductId 未指定の書籍は store_product_id: null で INSERT される', async () => {
-      const insertSpy = vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue(
-          Promise.resolve({
-            data: [
-              {
-                id: 'book-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
-                volume_number: 107,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-                store_product_id: null,
-              },
-            ],
-            error: null,
-          }),
-        ),
+    it('storeProductId 未指定の書籍は p_store_product_id: null で RPC に渡る', async () => {
+      const supabase = createMockSupabase({
+        books: { select: { data: [], error: null } },
+        user_books: { select: { data: [], error: null } },
       })
-
-      const supabase = {
-        from: vi.fn().mockImplementation((table: string) => {
-          if (table === 'books') {
-            return {
-              select: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    eq: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
-                  }),
-                }),
-              }),
-              insert: insertSpy,
-            }
-          }
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                in: vi.fn().mockReturnValue(Promise.resolve({ data: [], error: null })),
-              }),
-            }),
-            upsert: vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null })),
-          }
-        }),
-      } as unknown as Parameters<typeof processScrapePayload>[0]
 
       await processScrapePayload(supabase, userId, [singleBook])
 
-      expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ store_product_id: null }))
+      const mockSupabase = supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'upsert_book_with_series',
+        expect.objectContaining({ p_store_product_id: null }),
+      )
     })
   })
 
@@ -450,27 +435,8 @@ describe('processScrapePayload', () => {
       }
 
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: {
-            data: [
-              {
-                id: 'single-vol-id',
-                title: '火花',
-                author: '又吉直樹',
-                volume_number: null,
-                thumbnail_url: null,
-                isbn: null,
-                published_at: null,
-                is_adult: false,
-              },
-            ],
-            error: null,
-          },
-        },
-        user_books: {
-          select: { data: [], error: null },
-        },
+        books: { select: { data: [], error: null } },
+        user_books: { select: { data: [], error: null } },
       })
 
       const result = await processScrapePayload(supabase, userId, [singleVolumeBook])
@@ -482,42 +448,40 @@ describe('processScrapePayload', () => {
   describe('エラーハンドリング', () => {
     it('books INSERT 失敗時にエラーを throw する', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: { data: null, error: { message: 'DB error' } },
-        },
+        books: { select: { data: [], error: null } },
+        rpc: { data: null, error: { message: 'DB error' } },
       })
 
       await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow()
     })
 
-    it('books INSERT が空データを返した場合にエラーを throw する', async () => {
+    it('RPC が空データを返した場合にエラーを throw する', async () => {
       const supabase = createMockSupabase({
-        books: {
-          select: { data: [], error: null },
-          insert: { data: [], error: null },
-        },
+        books: { select: { data: [], error: null } },
+        rpc: { data: null, error: null },
       })
 
       await expect(processScrapePayload(supabase, userId, [singleBook])).rejects.toThrow(
-        'books INSERT returned no data',
+        'upsert_book_with_series returned no data',
       )
     })
 
     it('user_books UPSERT 失敗時にエラーを throw する', async () => {
       const supabase = createMockSupabase({
+        series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
         books: {
           select: {
             data: [
               {
                 id: 'book-1',
-                title: 'ワンピース',
-                author: '尾田栄一郎',
+                series_id: 'series-1',
                 volume_number: 107,
                 thumbnail_url: null,
                 isbn: null,
                 published_at: null,
                 is_adult: false,
+                store_product_id: null,
+                series: { title: 'ワンピース', author: '尾田栄一郎' },
               },
             ],
             error: null,

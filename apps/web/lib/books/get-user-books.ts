@@ -7,8 +7,6 @@ interface UserBookWithBooks {
   created_at: string
   books: {
     id: string
-    title: string
-    author: string
     volume_number: number | null
     thumbnail_url: string | null
     isbn: string | null
@@ -16,6 +14,10 @@ interface UserBookWithBooks {
     is_adult: boolean
     store_product_id: string | null
     created_at: string
+    series: {
+      title: string
+      author: string
+    }
   }
 }
 
@@ -44,7 +46,7 @@ export async function getUserBooks(
   let qb = supabase
     .from('user_books')
     .select(
-      'id, store, created_at, books!inner(id, title, author, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at)',
+      'id, store, created_at, books!inner(id, volume_number, thumbnail_url, isbn, published_at, is_adult, store_product_id, created_at, series!inner(title, author))',
       { count: 'exact' },
     )
     // RLS と併せた defense in depth: RLS policy migration のバグや service_role
@@ -53,8 +55,9 @@ export async function getUserBooks(
 
   if (query.q) {
     const pattern = buildQuotedIlikePattern(query.q)
+    // タイトル・著者は series テーブルに移動したため referencedTable はネストパス
     qb = qb.or(`title.ilike.${pattern},author.ilike.${pattern}`, {
-      referencedTable: 'books',
+      referencedTable: 'books.series',
     })
   }
 
@@ -68,7 +71,7 @@ export async function getUserBooks(
 
   const offset = (query.page - 1) * query.limit
   qb = qb.range(offset, offset + query.limit - 1)
-  qb = qb.order('title', { referencedTable: 'books' })
+  qb = qb.order('title', { referencedTable: 'books.series' })
   qb = qb.order('volume_number', { referencedTable: 'books', nullsFirst: false })
 
   const { data, count, error } = await qb
@@ -79,8 +82,8 @@ export async function getUserBooks(
 
   const books: BookWithStore[] = rows.map((row) => ({
     id: row.books.id,
-    title: row.books.title,
-    author: row.books.author,
+    title: row.books.series.title,
+    author: row.books.series.author,
     volumeNumber: row.books.volume_number,
     thumbnailUrl: row.books.thumbnail_url,
     isbn: row.books.isbn,
