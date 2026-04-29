@@ -7,6 +7,7 @@ import type { ScrapeResponse, ExternalMessageResponse, TriggerScrapeMessage } fr
 import type {
   AbortScrapeReason,
   ExtensionMessage,
+  IsTriggerTabResponse,
   MessageResponse,
   SyncResult,
 } from '../types/messages.js'
@@ -69,7 +70,7 @@ function isValidMessage(message: unknown): message is ExtensionMessage {
 export async function handleMessage(
   message: unknown,
   sender: chrome.runtime.MessageSender,
-): Promise<MessageResponse<ScrapeResponse>> {
+): Promise<MessageResponse<ScrapeResponse> | IsTriggerTabResponse> {
   // 自拡張機能からのメッセージのみ受け付ける
   if (sender.id !== chrome.runtime.id) {
     return { success: false, error: '不正な送信元です', code: 'UNKNOWN_ERROR' }
@@ -94,6 +95,15 @@ export async function handleMessage(
         : 'UNEXPECTED_ERROR'
       await handleAbortScrape(reason)
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
+    }
+    case 'IS_TRIGGER_TAB': {
+      // sender.tab.id と trigger.tabId を比較して content script に返す。
+      // tab がそもそも tab 由来でないリクエスト (popup 等) は false で返す。
+      const senderTabId = sender.tab?.id
+      const trigger = await getKindleScrapeTrigger()
+      const match =
+        typeof senderTabId === 'number' && trigger !== null && trigger.tabId === senderTabId
+      return { success: true, data: { match } }
     }
     default:
       return { success: false, error: '不明なメッセージタイプです', code: 'UNKNOWN_ERROR' }

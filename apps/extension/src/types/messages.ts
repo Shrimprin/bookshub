@@ -38,7 +38,24 @@ export interface AbortScrapeMessage {
   reason: AbortScrapeReason
 }
 
-export type ExtensionMessage = SendScrapedBooksMessage | ReloadBookshelfMessage | AbortScrapeMessage
+// content script から「自分が trigger タブか」を background に問い合わせる。
+// chrome.tabs.getCurrent() は content script で動かないため、background が
+// sender.tab.id を見て trigger.tabId と比較する RPC で代替する。
+// 同一 trigger flag を立てたまま別タブで Kindle 購入履歴を手動訪問された
+// ケースで、誤って tab 違いの content script がスクレイプを進めるのを防ぐ。
+export interface IsTriggerTabMessage {
+  type: 'IS_TRIGGER_TAB'
+}
+
+export type IsTriggerTabResponse =
+  | { success: true; data: { match: boolean } }
+  | { success: false; error: string; code: ErrorCode }
+
+export type ExtensionMessage =
+  | SendScrapedBooksMessage
+  | ReloadBookshelfMessage
+  | AbortScrapeMessage
+  | IsTriggerTabMessage
 
 // --- 同期結果（storage 保存用） ---
 

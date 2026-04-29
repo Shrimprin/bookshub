@@ -48,14 +48,17 @@ vi.stubGlobal('chrome', {
 })
 
 // テストヘルパー: trigger flag をセット (Phase 3 で main() が gate されるため、
-// 既存の main()-driven テストはすべて事前に flag を立てる必要がある)
-function setActiveTrigger(): void {
+// 既存の main()-driven テストはすべて事前に flag を立てる必要がある)。
+// 加えて _internals.isTriggerTab を「自タブで OK」相当の true 固定 mock にする
+// (kindleModule を引数で受け取り spy をかける)。
+function setActiveTrigger(kindleMod: typeof import('../kindle.js')): void {
   mockSessionStorage.set('bookhub_kindle_trigger', {
     tabId: 123,
     startedAt: Date.now(),
     source: 'web',
     store: 'kindle',
   })
+  vi.spyOn(kindleMod._internals, 'isTriggerTab').mockResolvedValue(true)
 }
 
 // --- DOM ヘルパー ---
@@ -278,7 +281,7 @@ describe('kindle', () => {
 
   describe('main', () => {
     beforeEach(() => {
-      setActiveTrigger()
+      setActiveTrigger(kindleModule)
     })
 
     it('書籍を取得して sendScrapedBooks を呼ぶ', async () => {
@@ -378,7 +381,7 @@ describe('kindle', () => {
     })
 
     it('trigger flag が新鮮なら従来通り main() が走る', async () => {
-      setActiveTrigger()
+      setActiveTrigger(kindleModule)
       mockSendMessage.mockResolvedValue({
         success: true,
         data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
@@ -390,8 +393,26 @@ describe('kindle', () => {
       expect(mockSendMessage).toHaveBeenCalled()
     })
 
+    it('flag は新鮮だが別タブの content script (isTriggerTab=false) なら何もせず return する', async () => {
+      // flag はセットするが isTriggerTab を false に上書き
+      mockSessionStorage.set('bookhub_kindle_trigger', {
+        tabId: 999,
+        startedAt: Date.now(),
+        source: 'web',
+        store: 'kindle',
+      })
+      vi.spyOn(kindleModule._internals, 'isTriggerTab').mockResolvedValue(false)
+      setupKindlePage([{ title: 'テスト 1巻', author: 'テスト作者' }])
+
+      await kindleModule.main()
+
+      // 別タブ扱いなので SEND_SCRAPED_BOOKS も ABORT_SCRAPE も送らない
+      // (本体タブの cleanup を奪わないため)
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+
     it('waitForElement が DOM を見つけられず timeout したら ABORT_SCRAPE(NO_DOM) を送る', async () => {
-      setActiveTrigger()
+      setActiveTrigger(kindleModule)
       document.body.innerHTML = '<div>no books rendered</div>'
       mockSendMessage.mockResolvedValue({ success: true })
 
@@ -408,7 +429,7 @@ describe('kindle', () => {
     })
 
     it('スクレイプ結果 0 件で sendAndClear が呼ばれた場合 ABORT_SCRAPE(NO_BOOKS) を送る', async () => {
-      setActiveTrigger()
+      setActiveTrigger(kindleModule)
       // 既存セッションを準備し、現在ページで 0 件 (タイトルカード要素なし) → 最終ページ送信パスへ
       mockStorage.set('bookhub_scrape_session_v1', {
         startedAt: Date.now(),
@@ -444,7 +465,7 @@ describe('kindle', () => {
 
   describe('main: ページネーション', () => {
     beforeEach(() => {
-      setActiveTrigger()
+      setActiveTrigger(kindleModule)
     })
 
     function addPageLink(pageNum: number): void {

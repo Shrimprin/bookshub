@@ -262,6 +262,11 @@ export const _internals = {
   waitForElement(selector: string, timeout?: number): Promise<Element | null> {
     return waitForElement(selector, timeout)
   },
+  // isTriggerTab も同様に spy 可能化する。背景タブと手動訪問タブを切り分ける
+  // RPC 失敗時のテストや「不一致タブ」シナリオのテストを容易にする。
+  isTriggerTab(): Promise<boolean> {
+    return isTriggerTab()
+  },
 }
 
 function logParsedBooks(books: ScrapeBook[]): void {
@@ -389,6 +394,16 @@ export async function main(): Promise<void> {
     return
   }
 
+  // tabId 照合: trigger 中に別タブで Kindle 購入履歴を手動訪問された場合、
+  // chrome.storage.session は拡張全体で共有のため そのタブの content script も
+  // flag を読んで進んでしまう。background 経由で sender.tab.id == trigger.tabId
+  // を確認し、不一致なら何もせず return する (notifyAbort は呼ばない: trigger
+  // 本体タブは別途完走するので flag/タブ cleanup を奪ってはいけない)。
+  if (!(await _internals.isTriggerTab())) {
+    console.log(`${LOG_PREFIX} trigger active but on a different tab, skipping`)
+    return
+  }
+
   console.log(`${LOG_PREFIX} waiting for book items to appear...`)
   const found = await _internals.waitForElement(SELECTORS.titleCard, 10_000)
 
@@ -476,6 +491,22 @@ async function notifyAbort(reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR'): 
     await chrome.runtime.sendMessage({ type: 'ABORT_SCRAPE', reason })
   } catch (err) {
     console.warn(`${LOG_PREFIX} failed to notify ABORT_SCRAPE (${reason}):`, err)
+  }
+}
+
+async function isTriggerTab(): Promise<boolean> {
+  try {
+    const response = (await chrome.runtime.sendMessage({ type: 'IS_TRIGGER_TAB' })) as
+      | { success: true; data: { match: boolean } }
+      | { success: false }
+      | undefined
+    if (!response || response.success !== true) return false
+    return response.data.match === true
+  } catch (err) {
+    // background との通信失敗時は安全側に倒して false (= 動作しない) を返す。
+    // 結果として本体タブも止まるが、cleanup は trigger TTL or onRemoved で起こる。
+    console.warn(`${LOG_PREFIX} failed to verify trigger tab match:`, err)
+    return false
   }
 }
 

@@ -831,6 +831,62 @@ describe('background', () => {
     })
   })
 
+  describe('IS_TRIGGER_TAB (tabId 照合 RPC)', () => {
+    it('sender.tab.id === trigger.tabId のとき match=true を返す', async () => {
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: 42,
+        startedAt: Date.now(),
+        source: 'web',
+        store: 'kindle',
+      })
+
+      const result = await handleMessage(
+        { type: 'IS_TRIGGER_TAB' },
+        { id: EXTENSION_ID, tab: { id: 42 } as chrome.tabs.Tab },
+      )
+
+      expect(result).toEqual({ success: true, data: { match: true } })
+    })
+
+    it('sender.tab.id !== trigger.tabId のとき match=false を返す', async () => {
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: 42,
+        startedAt: Date.now(),
+        source: 'web',
+        store: 'kindle',
+      })
+
+      const result = await handleMessage(
+        { type: 'IS_TRIGGER_TAB' },
+        { id: EXTENSION_ID, tab: { id: 99 } as chrome.tabs.Tab },
+      )
+
+      expect(result).toEqual({ success: true, data: { match: false } })
+    })
+
+    it('trigger flag が無いとき match=false を返す', async () => {
+      const result = await handleMessage(
+        { type: 'IS_TRIGGER_TAB' },
+        { id: EXTENSION_ID, tab: { id: 42 } as chrome.tabs.Tab },
+      )
+
+      expect(result).toEqual({ success: true, data: { match: false } })
+    })
+
+    it('sender.tab が undefined (popup 等) のとき match=false を返す', async () => {
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: 42,
+        startedAt: Date.now(),
+        source: 'web',
+        store: 'kindle',
+      })
+
+      const result = await handleMessage({ type: 'IS_TRIGGER_TAB' }, { id: EXTENSION_ID })
+
+      expect(result).toEqual({ success: true, data: { match: false } })
+    })
+  })
+
   describe('handleSendScrapedBooks cleanup (Phase 5)', () => {
     function seedTrigger(opts: { tabId?: number; startedAt?: number } = {}) {
       mockSessionData.set('bookhub_kindle_trigger', {
