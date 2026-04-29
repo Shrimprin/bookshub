@@ -134,7 +134,22 @@ type AbortScrapeMessage = {
   reason: AbortScrapeReason
 }
 
-type ExtensionMessage = SendScrapedBooksMessage | ReloadBookshelfMessage | AbortScrapeMessage
+// Content Script から Service Worker へ（tabId 照合 RPC）
+// chrome.tabs.getCurrent() は content script で動かないため、background が
+// sender.tab.id を見て trigger.tabId と比較する RPC で代替する。
+type IsTriggerTabMessage = {
+  type: 'IS_TRIGGER_TAB'
+}
+
+type IsTriggerTabResponse =
+  | { success: true; data: { match: boolean } }
+  | { success: false; error: string; code: ErrorCode }
+
+type ExtensionMessage =
+  | SendScrapedBooksMessage
+  | ReloadBookshelfMessage
+  | AbortScrapeMessage
+  | IsTriggerTabMessage
 
 // Service Worker からのレスポンス（共通形式）
 type MessageResponse<T> =

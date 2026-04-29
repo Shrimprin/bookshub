@@ -129,10 +129,12 @@ sequenceDiagram
         Bridge-->>Button: { status: 'in-progress' }
         Button-->>User: 「既に進行中」表示
     else 初回 / trigger 完了後
-        BG->>TriggerStorage: bookhub_kindle_trigger フラグを<br/>setAccessLevel 付きで書込
-        Note over TriggerStorage: session 領域に set<br/>Content Script から読めるように<br/>accessLevel を TRUSTED_AND_UNTRUSTED に設定
-        BG->>BG: STORE_REGISTRY から<br/>Kindle trigger URL を取得
+        Note over BG: setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS) は<br/>SW 起動時のトップレベルで一度だけ実行済み
+        BG->>BG: STORE_REGISTRY[store] から<br/>Kindle trigger URL (?pageNumber=1) を取得
         BG->>KindlePage: chrome.tabs.create()<br/>({ url: trigger_url, active: false })
+        KindlePage-->>BG: tab.id
+        BG->>TriggerStorage: setKindleScrapeTrigger<br/>({ tabId, startedAt, source: 'web', store })
+        Note over BG: tab.create / flag 書込は try/catch で囲み<br/>throw 時は createdTabId を tabs.remove + flag clear<br/>→ TAB_CREATE_FAILED で応答
         BG-->>Bridge: { success: true }
         Bridge-->>Button: { status: 'sent' }
         Button-->>User: 「取り込み開始」表示
@@ -141,11 +143,19 @@ sequenceDiagram
 
         KindlePage->>CS: document_idle で<br/>kindle.ts 実行 (再起動)
         CS->>TriggerStorage: getKindleScrapeTrigger()
-        alt trigger flag 有効
-            CS->>CS: トリガーセッション有効、スクレイプ実行
-        else trigger flag なし
-            CS->>CS: 手動訪問と判定、early return
+        alt trigger flag なし or TTL 超過
+            CS->>CS: 手動訪問判定 / 期限切れで early return
             Note over CS: Console に<br/>'no active trigger, skipping (manual visit)' ログ
+        else trigger flag 有効
+            CS->>BG: chrome.runtime.sendMessage<br/>({ type: 'IS_TRIGGER_TAB' })
+            BG->>TriggerStorage: getKindleScrapeTrigger()
+            BG->>BG: sender.tab.id === trigger.tabId ?
+            BG-->>CS: { success: true, data: { match } }
+            alt match=false (別タブで偶発訪問)
+                CS->>CS: 何もせず return<br/>(本体タブの cleanup を奪わない)
+            else match=true (trigger 本体タブ)
+                CS->>CS: トリガーセッション有効、スクレイプ実行
+            end
         end
 
         loop 全ページを順次処理 (?pageNumber=1..N)
