@@ -69,6 +69,8 @@ pnpm --filter extension dev
 
 Chrome拡張機能は `apps/extension/dist/` を Chrome の「拡張機能を読み込む（デベロッパーモード）」でロードする。
 
+Kindle の取り込みは Web 本棚画面 (`/bookshelf`) の「Kindle から取り込み」ボタンから実行する。Kindle 購入履歴ページを直接開いても自動でスクレイプは走らない（プライバシー・UX 配慮）。
+
 ### ビルド
 
 ```bash
