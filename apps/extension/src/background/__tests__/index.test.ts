@@ -910,6 +910,31 @@ describe('background', () => {
       })
     })
 
+    it('flag clear が tabs.remove より先に行われる (onRemoved による上書きレース防止)', async () => {
+      seedTrigger({ tabId: 88 })
+      // tabs.remove 呼び出し時点で flag は既に消えていることを確認する
+      let flagAtRemoveTime: unknown = 'NOT_OBSERVED'
+      ;(chrome.tabs.remove as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        flagAtRemoveTime = mockSessionData.get('bookhub_kindle_trigger')
+        return Promise.resolve()
+      })
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ savedCount: 1, duplicateCount: 0, duplicates: [] }),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      // tabs.remove が呼ばれた時点で flag は既に undefined
+      expect(flagAtRemoveTime).toBeUndefined()
+      // 念のため最終状態でも flag は無いこと
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+    })
+
     it('chrome.tabs.remove が throw しても flag は必ず clear される', async () => {
       seedTrigger({ tabId: 88 })
       ;(chrome.tabs.remove as ReturnType<typeof vi.fn>).mockRejectedValue(

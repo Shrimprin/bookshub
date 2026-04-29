@@ -310,15 +310,21 @@ async function cleanupAndRecordResult(
   const session = await getScrapeSession()
   const now = Date.now()
 
-  if (trigger?.tabId !== undefined) {
+  // flag を tabs.remove より先にクリアする。
+  // 順序を逆にすると、自分で閉じたタブの onRemoved が走った時点で
+  // handleTabRemoved がまだ flag を読めてしまい、正常終了で書いた lastSyncResult を
+  // 「タブが閉じられました」エラーで上書きしてしまうレース window が生まれる。
+  // 先に flag を消しておけば onRemoved 側は trigger=null で no-op になる。
+  const tabIdToClose = trigger?.tabId
+  await clearKindleScrapeTrigger()
+
+  if (tabIdToClose !== undefined) {
     try {
-      await chrome.tabs.remove(trigger.tabId)
+      await chrome.tabs.remove(tabIdToClose)
     } catch {
       // タブが既に閉じられているケース等は握りつぶす。
-      // flag clear は必ず後段で実行されるので状態は確実に進む。
     }
   }
-  await clearKindleScrapeTrigger()
 
   await setLastSyncResult({
     ...partial,
