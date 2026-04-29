@@ -54,12 +54,21 @@ describe('KindleImportButton', () => {
     })
   })
 
-  it("'error' ならエラーメッセージを出す", async () => {
-    triggerMock.mockResolvedValue({ status: 'error', message: 'タブの作成に失敗しました' })
+  it("'error' + code 指定ならコード別のローカライズ済みメッセージを出す", async () => {
+    triggerMock.mockResolvedValue({ status: 'error', code: 'TAB_CREATE_FAILED' })
     render(<KindleImportButton />)
     fireEvent.click(screen.getByRole('button', { name: /Kindle から取り込み/ }))
     await waitFor(() => {
-      expect(screen.getByText(/失敗/)).toBeInTheDocument()
+      expect(screen.getByText(/タブの作成に失敗しました/)).toBeInTheDocument()
+    })
+  })
+
+  it("'error' で code なしなら汎用メッセージを出す (生エラーは UI に流さない)", async () => {
+    triggerMock.mockResolvedValue({ status: 'error' })
+    render(<KindleImportButton />)
+    fireEvent.click(screen.getByRole('button', { name: /Kindle から取り込み/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/再試行してください/)).toBeInTheDocument()
     })
   })
 

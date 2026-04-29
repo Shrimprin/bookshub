@@ -1,5 +1,6 @@
 import type { SyncResult } from '../types/messages.js'
 import type { ScrapeSession } from '../content/shared/scrape-session.js'
+import type { ScrapeStore, ScrapeTriggerSource } from './constants.js'
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'bookhub_access_token',
@@ -12,11 +13,13 @@ export const STORAGE_KEYS = {
 
 // Web 側ボタン押下で開始した Kindle スクレイプの進行中状態。
 // tabId は終了時 (cleanup) と onRemoved 監視用。
+// source / store は constants.ts と単一定義。型を分散させると追加時に
+// SyncResult.trigger 等との整合が型レベルで取れなくなるため。
 export type KindleScrapeTrigger = {
   tabId: number
   startedAt: number
-  source: 'web' | 'auto'
-  store: 'kindle'
+  source: ScrapeTriggerSource
+  store: ScrapeStore
 }
 
 export async function getAccessToken(): Promise<string | null> {

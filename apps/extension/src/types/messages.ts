@@ -1,4 +1,5 @@
 import type { ScrapeBook, ScrapeResponse, ScrapeDuplicate } from '@bookhub/shared'
+import type { ScrapeStore, ScrapeTriggerSource } from '../utils/constants.js'
 
 // --- エラーコード ---
 
@@ -41,11 +42,11 @@ export interface SyncResult {
   timestamp: number
   // observability / trigger 経由情報 (Phase 5 で書き込み開始)
   errorCode?: ErrorCode
-  trigger?: 'auto' | 'web'
+  trigger?: ScrapeTriggerSource
   startedAt?: number
   durationMs?: number
   pagesScraped?: number
-  store?: 'kindle'
+  store?: ScrapeStore
 }
 
 // --- Background → Content Script レスポンス型 ---

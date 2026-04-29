@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { ExternalMessageErrorCode } from '@bookhub/shared'
 import { Button } from '@/components/ui/button'
 import { triggerKindleScrape, type TriggerResult } from '@/lib/extension/trigger-kindle-scrape'
 
@@ -20,6 +21,18 @@ const KIND_CLASSNAME: Record<FeedbackKind, string> = {
   warn: 'text-amber-700',
   error: 'text-destructive',
 }
+
+// 拡張側の error 文字列はそのまま UI に出さない (改竄リスク・i18n 揺れ等)。
+// 構造化された error code から localized メッセージへホワイトリストでマップする。
+const ERROR_MESSAGE_BY_CODE: Record<ExternalMessageErrorCode, string> = {
+  ALREADY_IN_PROGRESS: '取り込みが既に進行中です。完了までお待ちください。',
+  UNSUPPORTED_STORE: '現在 Kindle のみ対応しています。',
+  TAB_CREATE_FAILED: 'タブの作成に失敗しました。再試行してください。',
+  INVALID_ORIGIN: '送信元が許可されていません。',
+  INVALID_MESSAGE: 'メッセージ形式が不正です。',
+}
+
+const GENERIC_ERROR_MESSAGE = '取り込みに失敗しました。再試行してください。'
 
 function feedbackFor(result: TriggerResult): Feedback {
   switch (result.status) {
@@ -49,7 +62,7 @@ function feedbackFor(result: TriggerResult): Feedback {
     case 'error':
       return {
         kind: 'error',
-        message: `取り込みに失敗しました: ${result.message}`,
+        message: result.code ? ERROR_MESSAGE_BY_CODE[result.code] : GENERIC_ERROR_MESSAGE,
       }
   }
 }

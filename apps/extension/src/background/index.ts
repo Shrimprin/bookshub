@@ -11,6 +11,7 @@ import {
   clearKindleScrapeTrigger,
   getScrapeSession,
 } from '../utils/storage.js'
+import { TRIGGER_TTL_MS } from '../utils/constants.js'
 import type { ErrorCode } from '../types/messages.js'
 
 // Web 本棚から trigger を受け付けたとき、開くべき URL とコンテンツスクリプトの match パターン。
@@ -23,11 +24,6 @@ const STORE_REGISTRY = {
       'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=1',
   },
 } as const satisfies Record<TriggerScrapeMessage['store'], { triggerUrl: string }>
-
-// trigger flag が立ってから、main() のスクレイプ完了 / クリーンアップが走るまでの安全網。
-// Service Worker 再起動・タブ閉じ・onRemoved 取りこぼし等で flag が孤児化しても、
-// この時間を超えれば次回 trigger を受け付ける。
-const TRIGGER_TTL_MS = 10 * 60 * 1000
 
 // --- Service Worker 初期化 ---
 
@@ -98,7 +94,7 @@ export async function handleExternalMessage(
 ): Promise<ExternalMessageResponse> {
   // 1. origin 検証 - 許可リストに載っていないオリジンからのメッセージは全て拒否
   if (!isAllowedOrigin(sender.origin)) {
-    return { success: false, error: '許可されていない送信元です' }
+    return { success: false, error: '許可されていない送信元です', code: 'INVALID_ORIGIN' }
   }
 
   // 2. メッセージ形式バリデーション (Zod)
@@ -107,6 +103,7 @@ export async function handleExternalMessage(
     return {
       success: false,
       error: `不正なメッセージ形式: ${parsed.error.issues[0]?.message ?? 'unknown'}`,
+      code: 'INVALID_MESSAGE',
     }
   }
 
@@ -129,7 +126,7 @@ async function triggerScrape(
   const config = STORE_REGISTRY[store]
   if (!config) {
     // Zod parse で弾かれるはずだが、防衛的に
-    return { success: false, error: '対応していないストアです' }
+    return { success: false, error: '対応していないストアです', code: 'UNSUPPORTED_STORE' }
   }
 
   // 重複ガード: 既存 trigger flag が「TTL 内 + タブ生存」であれば作り直さない
@@ -146,7 +143,11 @@ async function triggerScrape(
       }
     }
     if (alive) {
-      return { success: false, error: '取り込みが既に進行中です (already in progress)' }
+      return {
+        success: false,
+        error: '取り込みが既に進行中です',
+        code: 'ALREADY_IN_PROGRESS',
+      }
     }
     // 孤児 flag を回収して新規作成へ
     await clearKindleScrapeTrigger()
@@ -156,7 +157,7 @@ async function triggerScrape(
   // kindle.ts 側の loadOrCreateSession が旧セッションを破棄して新規開始する。
   const tab = await chrome.tabs.create({ url: config.triggerUrl, active: false })
   if (typeof tab.id !== 'number') {
-    return { success: false, error: 'タブの作成に失敗しました' }
+    return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
   }
 
   await setKindleScrapeTrigger({

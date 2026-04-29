@@ -71,10 +71,14 @@ describe('triggerKindleScrape', () => {
     expect(result).toEqual({ status: 'no-extension' })
   })
 
-  it("reason='already_in_progress' なら 'in-progress' を返す", async () => {
+  it("code='ALREADY_IN_PROGRESS' なら 'in-progress' を返す", async () => {
     process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-ext-id'
     const sendMessage = vi.fn((_id, _msg, callback) =>
-      callback?.({ success: false, error: '取り込みが既に進行中です (already in progress)' }),
+      callback?.({
+        success: false,
+        error: '取り込みが既に進行中です',
+        code: 'ALREADY_IN_PROGRESS',
+      }),
     )
     ;(globalThis as { chrome?: unknown }).chrome = {
       runtime: { sendMessage, id: 'browser-ext-id', lastError: null },
@@ -84,20 +88,42 @@ describe('triggerKindleScrape', () => {
     expect(result).toEqual({ status: 'in-progress' })
   })
 
-  it("その他の error response は 'error' を返す", async () => {
+  it("code='UNSUPPORTED_STORE' なら 'misconfigured' を返す", async () => {
     process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-ext-id'
     const sendMessage = vi.fn((_id, _msg, callback) =>
-      callback?.({ success: false, error: 'タブの作成に失敗しました' }),
+      callback?.({
+        success: false,
+        error: '対応していないストアです',
+        code: 'UNSUPPORTED_STORE',
+      }),
     )
     ;(globalThis as { chrome?: unknown }).chrome = {
       runtime: { sendMessage, id: 'browser-ext-id', lastError: null },
     }
     const { triggerKindleScrape } = await import('../trigger-kindle-scrape')
     const result = await triggerKindleScrape()
-    expect(result).toMatchObject({ status: 'error' })
+    expect(result).toEqual({ status: 'misconfigured' })
   })
 
-  it("sendMessage が例外を投げても 'error' で握りつぶす", async () => {
+  it("その他の error response は 'error' (拡張の error 文字列は UI に出さない)", async () => {
+    process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-ext-id'
+    const sendMessage = vi.fn((_id, _msg, callback) =>
+      callback?.({
+        success: false,
+        error: 'タブの作成に失敗しました',
+        code: 'TAB_CREATE_FAILED',
+      }),
+    )
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage, id: 'browser-ext-id', lastError: null },
+    }
+    const { triggerKindleScrape } = await import('../trigger-kindle-scrape')
+    const result = await triggerKindleScrape()
+    // 生 error 文字列を含めない: code のみ伝播
+    expect(result).toEqual({ status: 'error', code: 'TAB_CREATE_FAILED' })
+  })
+
+  it("sendMessage が例外を投げても 'error' で握りつぶす (生エラーを UI に伝えない)", async () => {
     process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-ext-id'
     ;(globalThis as { chrome?: unknown }).chrome = {
       runtime: {
@@ -111,5 +137,6 @@ describe('triggerKindleScrape', () => {
     const { triggerKindleScrape } = await import('../trigger-kindle-scrape')
     const result = await triggerKindleScrape()
     expect(result.status).toBe('error')
+    expect(result).not.toHaveProperty('message')
   })
 })

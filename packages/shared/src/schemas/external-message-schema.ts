@@ -29,4 +29,15 @@ export type ClearAccessTokenMessage = z.infer<typeof clearAccessTokenMessageSche
 export type TriggerScrapeMessage = z.infer<typeof triggerScrapeMessageSchema>
 export type ExternalExtensionMessage = z.infer<typeof externalExtensionMessageSchema>
 
-export type ExternalMessageResponse = { success: true } | { success: false; error: string }
+// 失敗時のエラーコード。Web 側はメッセージ本文 (error) ではなくこの code で
+// UI 分岐すること。文字列マッチングは i18n / 表記揺れで簡単に壊れるため避ける。
+export type ExternalMessageErrorCode =
+  | 'ALREADY_IN_PROGRESS'
+  | 'UNSUPPORTED_STORE'
+  | 'TAB_CREATE_FAILED'
+  | 'INVALID_ORIGIN'
+  | 'INVALID_MESSAGE'
+
+export type ExternalMessageResponse =
+  | { success: true }
+  | { success: false; error: string; code?: ExternalMessageErrorCode }

@@ -5,17 +5,24 @@
 // 返り値の判別 union は、UI 側で「拡張未インストール → インストール誘導」「進行中 → 待機案内」
 // 「設定不備 → 管理者向けメッセージ」と分岐できる粒度を確保する。将来インストール促進モーダル
 // 等を差し込む際もこのままの API を使い続けられる。
+//
+// 拡張側の error 文字列はそのまま UI に出さない (改竄リスク・i18n 揺れ・拡張更新による
+// 表記変動に弱い)。代わりに ExternalMessageErrorCode による構造化判定を行う。
+
+import type { ExternalMessageErrorCode } from '@bookhub/shared'
 
 export type TriggerResult =
   | { status: 'sent' }
   | { status: 'no-extension' } // chrome 未定義 / lastError (未インストール扱い)
   | { status: 'misconfigured' } // NEXT_PUBLIC_EXTENSION_ID 未設定
-  | { status: 'in-progress' } // 拡張側が already_in_progress を返した
-  | { status: 'error'; message: string }
+  | { status: 'in-progress' } // 拡張側が ALREADY_IN_PROGRESS を返した
+  | { status: 'error'; code?: ExternalMessageErrorCode }
 
 type ExternalRequest = { type: 'TRIGGER_SCRAPE'; store: 'kindle' }
 
-type SendMessageResponse = { success: true } | { success: false; error?: string }
+type SendMessageResponse =
+  | { success: true }
+  | { success: false; error?: string; code?: ExternalMessageErrorCode }
 
 declare const chrome:
   | {
@@ -29,8 +36,6 @@ declare const chrome:
       }
     }
   | undefined
-
-const ALREADY_IN_PROGRESS_MARKER = 'already in progress'
 
 export async function triggerKindleScrape(): Promise<TriggerResult> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
@@ -53,16 +58,20 @@ export async function triggerKindleScrape(): Promise<TriggerResult> {
             resolve({ status: 'sent' })
             return
           }
-          const errMsg = response?.error ?? 'unknown error'
-          if (errMsg.includes(ALREADY_IN_PROGRESS_MARKER)) {
+          if (response?.code === 'ALREADY_IN_PROGRESS') {
             resolve({ status: 'in-progress' })
             return
           }
-          resolve({ status: 'error', message: errMsg })
+          if (response?.code === 'UNSUPPORTED_STORE') {
+            resolve({ status: 'misconfigured' })
+            return
+          }
+          resolve({ status: 'error', code: response?.code })
         },
       )
-    } catch (err) {
-      resolve({ status: 'error', message: String(err) })
+    } catch {
+      // 拡張側の生エラー文字列を UI に出さない (改竄リスク回避)
+      resolve({ status: 'error' })
     }
   })
 }

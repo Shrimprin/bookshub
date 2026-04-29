@@ -43,3 +43,4 @@ TODO_*.md
 
 # Claude Code local state (session memory, settings.local.json)
 .claude/
+.playwright-mcp/

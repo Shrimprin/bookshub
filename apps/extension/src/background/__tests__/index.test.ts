@@ -460,7 +460,7 @@ describe('background', () => {
           { type: 'SET_ACCESS_TOKEN', token: 'my-token' },
           { origin: 'https://evil.example.com', id: 'evil-id' },
         )
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
         expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
       })
 
@@ -469,7 +469,7 @@ describe('background', () => {
           { type: 'SET_ACCESS_TOKEN', token: 'my-token' },
           { id: 'some-id' },
         )
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
         expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
       })
     })
@@ -481,7 +481,7 @@ describe('background', () => {
 
       it('不明な type のメッセージを拒否する', async () => {
         const result = await handleExternalMessage({ type: 'UNKNOWN' }, allowedSender)
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
       })
 
       it('空文字列の token を拒否する', async () => {
@@ -489,7 +489,7 @@ describe('background', () => {
           { type: 'SET_ACCESS_TOKEN', token: '' },
           allowedSender,
         )
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
         expect(mockStorageData.get('bookhub_access_token')).toBeUndefined()
       })
 
@@ -498,7 +498,7 @@ describe('background', () => {
           { type: 'SET_ACCESS_TOKEN', token: 12345 },
           allowedSender,
         )
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
       })
 
       it('8192 文字を超える token を拒否する', async () => {
@@ -506,12 +506,12 @@ describe('background', () => {
           { type: 'SET_ACCESS_TOKEN', token: 'a'.repeat(8193) },
           allowedSender,
         )
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
       })
 
       it('null を拒否する', async () => {
         const result = await handleExternalMessage(null, allowedSender)
-        expect(result).toEqual({ success: false, error: expect.any(String) })
+        expect(result).toMatchObject({ success: false, error: expect.any(String) })
       })
     })
 
@@ -593,7 +593,7 @@ describe('background', () => {
         expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
       })
 
-      it('flag 既存 + tab 生存中なら already_in_progress を返し create しない', async () => {
+      it('flag 既存 + tab 生存中なら ALREADY_IN_PROGRESS を返し create しない', async () => {
         mockSessionData.set('bookhub_kindle_trigger', {
           tabId: 42,
           startedAt: Date.now(),
@@ -610,7 +610,7 @@ describe('background', () => {
 
         expect(result).toMatchObject({
           success: false,
-          error: expect.stringMatching(/in.progress/i),
+          code: 'ALREADY_IN_PROGRESS',
         })
         expect(chrome.tabs.create).not.toHaveBeenCalled()
         // flag は変更されない
