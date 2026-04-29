@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { BookWithStore } from '@bookhub/shared'
+import type { BookWithStore, SeriesId } from '@bookhub/shared'
 
 export interface SeriesDetail {
   series: {
@@ -42,12 +42,15 @@ interface UserBookRow {
  * - 0 件なら null を返す。呼出側で `notFound()` を呼ぶ前提
  *   - 存在しない seriesId / 他ユーザーの series (= 自分は所持していない) は同じ「0 件」
  *     になり情報リーク (IDOR) を回避する
- * - 巻は `volume_number ASC NULLS LAST` でソート
+ * - 巻は `volume_number ASC NULLS LAST` でソート (取得後 JS 側で並べ替え)
+ *   - PostgREST の `.order(..., { referencedTable: 'books' })` は **embedded resource 内**の
+ *     ソートで、親 (user_books) 行のソート順には影響しない仕様。inner join であっても同様。
+ *     1-query で取得した行をアプリ層で安定ソートする方が確実かつシンプル。
  */
 export async function getSeriesDetail(
   supabase: SupabaseClient,
   userId: string,
-  seriesId: string,
+  seriesId: SeriesId,
 ): Promise<SeriesDetail | null> {
   const { data, error } = await supabase
     .from('user_books')
@@ -56,7 +59,6 @@ export async function getSeriesDetail(
     )
     .eq('user_id', userId)
     .eq('books.series_id', seriesId)
-    .order('volume_number', { referencedTable: 'books', nullsFirst: false })
 
   if (error) throw new Error(`getSeriesDetail SELECT failed: ${error.message}`)
 
@@ -75,6 +77,16 @@ export async function getSeriesDetail(
       )
     }
   }
+
+  // volume_number ASC NULLS LAST。同 volume_number は created_at で安定化。
+  rows.sort((a, b) => {
+    const va = a.books.volume_number
+    const vb = b.books.volume_number
+    if (va === vb) return a.books.created_at.localeCompare(b.books.created_at)
+    if (va === null) return 1
+    if (vb === null) return -1
+    return va - vb
+  })
 
   const volumes: BookWithStore[] = rows.map((row) => ({
     id: row.books.id,

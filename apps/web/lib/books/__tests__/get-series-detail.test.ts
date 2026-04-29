@@ -93,15 +93,62 @@ describe('getSeriesDetail', () => {
     expect(supabase._builder.eq).toHaveBeenCalledWith('books.series_id', seriesId)
   })
 
-  it('volume_number 昇順 (NULLS LAST) で order する', async () => {
-    const supabase = createMockSupabase({ data: [mockRow()], error: null })
+  it('volumes は volume_number 昇順で返る (NULLS LAST、JS 側ソート)', async () => {
+    // PostgREST の order(referencedTable) は embedded sort で親行に効かないため、
+    // DB から順序保証なしで返ってきても JS 側で確実に並べる。
+    const v3 = mockRow()
+    v3.books.id = 'book-3'
+    v3.books.volume_number = 3
+    const v1 = {
+      ...mockRow(),
+      id: 'ub-1',
+      books: { ...mockRow().books, id: 'book-1', volume_number: 1 },
+    }
+    const vNull = {
+      ...mockRow(),
+      id: 'ub-null',
+      books: { ...mockRow().books, id: 'book-null', volume_number: null },
+    }
+    const v2 = {
+      ...mockRow(),
+      id: 'ub-2',
+      books: { ...mockRow().books, id: 'book-2', volume_number: 2 },
+    }
 
-    await getSeriesDetail(supabase, userId, seriesId)
+    // DB からは降順や混在で返ったとする
+    const supabase = createMockSupabase({ data: [v3, vNull, v1, v2], error: null })
 
-    expect(supabase._builder.order).toHaveBeenCalledWith('volume_number', {
-      referencedTable: 'books',
-      nullsFirst: false,
-    })
+    const result = await getSeriesDetail(supabase, userId, seriesId)
+
+    expect(result!.volumes.map((v) => v.volumeNumber)).toEqual([1, 2, 3, null])
+  })
+
+  it('同 volume_number は created_at で安定ソートされる', async () => {
+    const a = {
+      ...mockRow(),
+      id: 'ub-a',
+      books: {
+        ...mockRow().books,
+        id: 'book-a',
+        volume_number: 1,
+        created_at: '2024-01-02T00:00:00Z',
+      },
+    }
+    const b = {
+      ...mockRow(),
+      id: 'ub-b',
+      books: {
+        ...mockRow().books,
+        id: 'book-b',
+        volume_number: 1,
+        created_at: '2024-01-01T00:00:00Z',
+      },
+    }
+    const supabase = createMockSupabase({ data: [a, b], error: null })
+
+    const result = await getSeriesDetail(supabase, userId, seriesId)
+
+    expect(result!.volumes.map((v) => v.userBookId)).toEqual(['ub-b', 'ub-a'])
   })
 
   it('0 件の場合は null を返す (存在しない / 他ユーザーの series)', async () => {

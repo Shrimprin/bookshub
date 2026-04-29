@@ -35,11 +35,19 @@ interface UserSeriesRow {
   last_added_at: string
 }
 
+const VALID_STORES: ReadonlySet<Store> = new Set(['kindle', 'dmm', 'other'])
+const isStore = (value: string): value is Store => VALID_STORES.has(value as Store)
+
 export async function getUserSeries(
   supabase: SupabaseClient,
   userId: string,
   query: GetUserSeriesQuery,
 ): Promise<GetUserSeriesResult> {
+  // page/limit は Server Component の固定値 (1, 100) や API zod schema を通った
+  // 値が渡る前提だが、不正値で range 引数が負になるのを防ぐ defensive guard。
+  const page = Math.max(1, Math.floor(query.page) || 1)
+  const limit = Math.max(1, Math.floor(query.limit) || 1)
+
   let qb = supabase
     .from('user_series_view')
     .select('series_id, title, author, volume_count, cover_thumbnail_url, stores, last_added_at', {
@@ -54,8 +62,13 @@ export async function getUserSeries(
     qb = qb.or(`title.ilike.${pattern},author.ilike.${pattern}`)
   }
 
-  const offset = (query.page - 1) * query.limit
-  qb = qb.order('title').range(offset, offset + query.limit - 1)
+  const offset = (page - 1) * limit
+  // 同タイトル複数シリーズがあるとページ跨ぎの重複/取りこぼしが起きうるため、
+  // 一意キー (series_id) を tie-breaker として第 2 ソートに加え、ページング安定性を担保。
+  qb = qb
+    .order('title', { ascending: true })
+    .order('series_id', { ascending: true })
+    .range(offset, offset + limit - 1)
 
   const { data, count, error } = await qb
 
@@ -69,14 +82,16 @@ export async function getUserSeries(
     author: row.author,
     volumeCount: row.volume_count,
     coverThumbnailUrl: row.cover_thumbnail_url,
-    stores: row.stores as Store[],
+    // DB 側 CHECK 制約 (`store IN ('kindle', 'dmm', 'other')`) で正規値しか入らない前提だが、
+    // 万一 view が想定外値を返しても enum に出ないよう runtime filter でセーフ化。
+    stores: (row.stores ?? []).filter(isStore),
     lastAddedAt: row.last_added_at,
   }))
 
   return {
     series,
     total: count ?? 0,
-    page: query.page,
-    limit: query.limit,
+    page,
+    limit,
   }
 }

@@ -139,12 +139,49 @@ describe('getUserSeries', () => {
     expect(supabase._builder.range).toHaveBeenCalledWith(20, 29)
   })
 
-  it('title 昇順でソートする', async () => {
+  it('title 昇順 + series_id tie-breaker でソートする (ページング安定化)', async () => {
     const supabase = createMockSupabase({ data: [], count: 0, error: null })
 
     await getUserSeries(supabase, userId, { page: 1, limit: 20 })
 
-    expect(supabase._builder.order).toHaveBeenCalledWith('title')
+    expect(supabase._builder.order).toHaveBeenNthCalledWith(1, 'title', { ascending: true })
+    expect(supabase._builder.order).toHaveBeenNthCalledWith(2, 'series_id', { ascending: true })
+  })
+
+  it('page=0 は 1 にコエルスして range は negative にならない', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    const result = await getUserSeries(supabase, userId, { page: 0, limit: 20 })
+
+    expect(supabase._builder.range).toHaveBeenCalledWith(0, 19)
+    expect(result.page).toBe(1)
+  })
+
+  it('limit=0 は 1 にコエルスする', async () => {
+    const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+    const result = await getUserSeries(supabase, userId, { page: 1, limit: 0 })
+
+    expect(supabase._builder.range).toHaveBeenCalledWith(0, 0)
+    expect(result.limit).toBe(1)
+  })
+
+  it('stores に想定外の値が含まれる場合はフィルタで除外する', async () => {
+    const dirtyRow = { ...mockRow, stores: ['kindle', 'invalid_store', 'dmm'] }
+    const supabase = createMockSupabase({ data: [dirtyRow], count: 1, error: null })
+
+    const result = await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+    expect(result.series[0]?.stores).toEqual(['kindle', 'dmm'])
+  })
+
+  it('stores が null/undefined の場合は空配列にフォールバックする', async () => {
+    const nullStoresRow = { ...mockRow, stores: null }
+    const supabase = createMockSupabase({ data: [nullStoresRow], count: 1, error: null })
+
+    const result = await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+    expect(result.series[0]?.stores).toEqual([])
   })
 
   it('DB エラー時に throw する', async () => {

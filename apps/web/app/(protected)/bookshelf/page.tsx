@@ -10,8 +10,9 @@ import { EmptyState } from '@/features/bookshelf/empty-state'
 export const dynamic = 'force-dynamic'
 
 const MIN_QUERY_LENGTH = 2
-// getBooksQuerySchema.q の max(200) と同値にする (SC は直接 getUserSeries を呼ぶため
-// zod schema を通らない。悪意ある長文クエリによる DoS 耐性として明示的に切り詰める)
+// `getUserSeries` の q は zod schema を経由しない (SC が直接呼ぶため)。
+// 悪意ある長文クエリによる DoS 耐性として API 側 `getBooksQuerySchema.q` の max(200) と
+// 同値で明示的に切り詰める。
 const MAX_QUERY_LENGTH = 200
 const DEFAULT_LIMIT = 100
 
