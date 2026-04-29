@@ -34,24 +34,24 @@ describe('BookGallery', () => {
         title: '本B',
       }),
     ]
-    render(<BookGallery books={books} isSearching={false} />)
+    render(<BookGallery books={books} />)
     expect(screen.getByText(/本A/)).toBeInTheDocument()
     expect(screen.getByText(/本B/)).toBeInTheDocument()
   })
 
-  it('books 空配列 & isSearching=false のとき empty state を表示する', () => {
-    render(<BookGallery books={[]} isSearching={false} />)
-    expect(screen.getByText('蔵書がまだありません')).toBeInTheDocument()
+  it('books 空配列で emptyFallback が渡された場合はそれを描画する', () => {
+    render(<BookGallery books={[]} emptyFallback={<p>該当なし</p>} />)
+    expect(screen.getByText('該当なし')).toBeInTheDocument()
   })
 
-  it('books 空配列 & isSearching=true のとき no-results を表示する', () => {
-    render(<BookGallery books={[]} isSearching={true} />)
-    expect(screen.getByText('検索結果がありません')).toBeInTheDocument()
+  it('books 空配列で emptyFallback が無い場合は何も描画しない', () => {
+    const { container } = render(<BookGallery books={[]} />)
+    expect(container.textContent).toBe('')
   })
 
   it('books があるとき grid レイアウトの ul を描画する', () => {
     const books = [makeBook()]
-    render(<BookGallery books={books} isSearching={false} />)
+    render(<BookGallery books={books} />)
     const list = screen.getByRole('list', { name: /蔵書一覧/ })
     expect(list.className).toContain('grid')
   })

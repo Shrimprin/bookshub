@@ -1,15 +1,20 @@
+import type { ReactNode } from 'react'
 import type { BookWithStore } from '@bookhub/shared'
 import { BookCard } from './book-card'
-import { EmptyState } from './empty-state'
 
 interface BookGalleryProps {
   books: BookWithStore[]
-  isSearching: boolean
+  /**
+   * books が 0 件のときに表示する fallback。省略時は何も描画しない。
+   * 「蔵書 0 件」「検索結果 0 件」など empty 時の意味は呼出側ごとに違うため、
+   * EmptyState の variant 判定を内部に持たず外部に委ねる設計。
+   */
+  emptyFallback?: ReactNode
 }
 
-export function BookGallery({ books, isSearching }: BookGalleryProps) {
+export function BookGallery({ books, emptyFallback }: BookGalleryProps) {
   if (books.length === 0) {
-    return <EmptyState variant={isSearching ? 'no-results' : 'empty'} />
+    return <>{emptyFallback ?? null}</>
   }
 
   return (

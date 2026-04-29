@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUserBooks } from '@/lib/books/get-user-books'
 import { BookGallery } from '@/features/bookshelf/book-gallery'
 import { BookSearchForm } from '@/features/bookshelf/book-search-form'
+import { EmptyState } from '@/features/bookshelf/empty-state'
 
 // TODO: revalidateTag + unstable_cache に移行する (docs/specs/architecture.md 参照)
 // 現状は拡張機能のスクレイプ後リロードで最新データが出れば要件充足のため force-dynamic で許容
@@ -50,7 +51,10 @@ export default async function BookshelfPage({ searchParams }: BookshelfPageProps
         <p className="text-sm text-muted-foreground">{total} 冊</p>
       </header>
       <BookSearchForm defaultValue={trimmed} />
-      <BookGallery books={books} isSearching={hasQuery} />
+      <BookGallery
+        books={books}
+        emptyFallback={<EmptyState variant={hasQuery ? 'no-results' : 'empty'} />}
+      />
     </main>
   )
 }
