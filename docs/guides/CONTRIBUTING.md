@@ -151,15 +151,22 @@ Kindle 取り込みは **本棚画面の「Kindle から取り込み」ボタン
 
 1. ユーザーが `/bookshelf` の「Kindle から取り込み」ボタンを押す
 2. Web → 拡張機能に `TRIGGER_SCRAPE { store: 'kindle' }` を送信
-3. 拡張機能 Background が `chrome.storage.session` に trigger flag を書き、
-   `chrome.tabs.create({ url: '...?pageNumber=1', active: false })` で背景タブを開く
-4. Content Script (`kindle.ts`) は flag が立っている時だけスクレイプを実行
-5. 完了 / 全エラー時に Background がタブを閉じ、flag を clear、`bookhub_last_sync_result` に
-   `errorCode`, `durationMs`, `pagesScraped`, `trigger='web'` 等を記録
+3. 拡張機能 Background が背景タブを開き (`chrome.tabs.create({ url: '...?pageNumber=1', active: false })`)、
+   返ってきた `tab.id` を含めて `chrome.storage.session` に trigger flag を書き込む
+   (順序は tab 作成 → flag 書込。flag に `tabId` を持たせるため)
+4. Content Script (`kindle.ts`) は flag 存在 + TTL 内 + `IS_TRIGGER_TAB` RPC で
+   自タブが trigger.tabId と一致することを確認した時だけスクレイプを実行
+5. 完了 / 全エラー時に Background が flag を先に clear し、続いてタブを閉じ、
+   `bookhub_last_sync_result` に `errorCode`, `durationMs`, `pagesScraped`,
+   `trigger='web'` 等を記録 (順序: flag clear → tabs.remove。逆だと `onRemoved` が
+   先に走って成功結果を上書きするレースが発生する)
 6. 本棚タブが自動リロードされて結果が表示される
 
 ユーザーが手動でトリガータブを閉じた場合は `chrome.tabs.onRemoved` リスナーが
 flag を回収し、`status: 'error'` の lastSyncResult を書く。
+
+`chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })`
+は SW 起動時のトップレベルで一度実行され、content script から flag を読めるようにする。
 
 #### 動作確認チェックリスト
 

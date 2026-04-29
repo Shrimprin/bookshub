@@ -199,22 +199,30 @@ sequenceDiagram
             end
         end
 
-        alt エラー (AUTH_ERROR/NETWORK_ERROR/...)
-            CS->>BG: ABORT_SCRAPE<br/>{ type: 'ABORT_SCRAPE', reason: '...' }
-            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', errorCode, ... })
-            BG->>TriggerStorage: clearKindleScrapeTrigger()
+        alt content script で完走不能 (NO_DOM / NO_BOOKS / UNEXPECTED_ERROR)
+            CS->>BG: ABORT_SCRAPE<br/>{ reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR' }
+            BG->>TriggerStorage: clearKindleScrapeTrigger() (先に flag clear)
             BG->>KindlePage: chrome.tabs.remove()
-            BG->>BookshelfTab: reload
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', errorCode: 'UNKNOWN_ERROR', ... })
+        else AUTH_ERROR / NETWORK_ERROR (sendScrapedBooks 応答内)
+            BG-->>CS: { success: false, code: 'AUTH_ERROR' | 'NETWORK_ERROR' }
+            Note over CS: scrapeSession を保持し、ユーザーの再ログインを待つ<br/>(ABORT_SCRAPE は送らない、cleanup も走らない)
+        else API_ERROR / VALIDATION_ERROR (復帰不能)
+            BG->>TriggerStorage: clearKindleScrapeTrigger() (先に flag clear)
+            BG->>KindlePage: chrome.tabs.remove()
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', errorCode, ... })
         end
     end
 
     Note over BG: ── 孤児フラグ回収 (chrome.tabs.onRemoved) ──
     alt ユーザーがトリガータブを手動で閉じた場合
         BG->>BG: tabs.onRemoved リスナー発火
-        BG->>BG: trigger flag チェック + TTL 確認
-        alt trigger flag が生きている
-            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', error: 'タブが閉じられた' })
+        BG->>TriggerStorage: trigger 取得し tabId 一致確認
+        alt 一致 (孤児タブ)
             BG->>TriggerStorage: clearKindleScrapeTrigger()
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', error: 'タブが閉じられました' })
+        else 不一致 (関係ないタブ)
+            Note over BG: no-op
         end
     end
 ```
