@@ -9,7 +9,9 @@ import {
   getKindleScrapeTrigger,
   setKindleScrapeTrigger,
   clearKindleScrapeTrigger,
+  getScrapeSession,
 } from '../utils/storage.js'
+import type { ErrorCode } from '../types/messages.js'
 
 // Web 本棚から trigger を受け付けたとき、開くべき URL とコンテンツスクリプトの match パターン。
 // 将来 'dmm' 等を追加する場合はこの registry にエントリを足し、TriggerScrapeMessage の
@@ -198,21 +200,69 @@ export async function handleTabRemoved(tabId: number): Promise<void> {
 
 // --- スクレイピングデータ送信 ---
 
+// scrape の終了パスをすべて通す共通クリーンアップ。
+// trigger flag があれば対応タブを閉じる (failure含む) + flag clear し、
+// observability フィールド (durationMs, pagesScraped, trigger, store) を
+// lastSyncResult に必ず付与する。
+async function cleanupAndRecordResult(
+  partial: Pick<
+    SyncResult,
+    'status' | 'savedCount' | 'duplicateCount' | 'duplicates' | 'error' | 'errorCode'
+  >,
+): Promise<void> {
+  const trigger = await getKindleScrapeTrigger()
+  const session = await getScrapeSession()
+  const now = Date.now()
+
+  if (trigger?.tabId !== undefined) {
+    try {
+      await chrome.tabs.remove(trigger.tabId)
+    } catch {
+      // タブが既に閉じられているケース等は握りつぶす。
+      // flag clear は必ず後段で実行されるので状態は確実に進む。
+    }
+  }
+  await clearKindleScrapeTrigger()
+
+  await setLastSyncResult({
+    ...partial,
+    timestamp: now,
+    trigger: trigger?.source,
+    startedAt: trigger?.startedAt,
+    durationMs: trigger ? now - trigger.startedAt : undefined,
+    pagesScraped: session?.lastPageScraped,
+    store: trigger?.store,
+  })
+}
+
 async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse<ScrapeResponse>> {
   // 1. 認証トークン取得
   const token = await getAccessToken()
   if (!token) {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: '未認証: ログインが必要です',
+      errorCode: 'AUTH_ERROR',
+    })
     return { success: false, error: '未認証: ログインが必要です', code: 'AUTH_ERROR' }
   }
 
   // 2. バリデーション
   const parsed = scrapePayloadSchema.safeParse({ books })
   if (!parsed.success) {
-    return {
-      success: false,
-      error: `バリデーションエラー: ${parsed.error.issues[0]?.message ?? '不正なデータ'}`,
-      code: 'VALIDATION_ERROR',
-    }
+    const errMsg = `バリデーションエラー: ${parsed.error.issues[0]?.message ?? '不正なデータ'}`
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: errMsg,
+      errorCode: 'VALIDATION_ERROR',
+    })
+    return { success: false, error: errMsg, code: 'VALIDATION_ERROR' }
   }
 
   // 3. API にPOST
@@ -227,31 +277,48 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
       body: JSON.stringify({ books: parsed.data.books }),
     })
   } catch {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'ネットワークエラーが発生しました',
+      errorCode: 'NETWORK_ERROR',
+    })
     return { success: false, error: 'ネットワークエラーが発生しました', code: 'NETWORK_ERROR' }
   }
 
   // 4. レスポンスハンドリング
   if (!response.ok) {
+    let errorCode: ErrorCode
+    let errMsg: string
     if (response.status === 401) {
       // 期限切れトークンを storage から削除して、次回 sendScrapedBooks 時に
       // 早期 return (token === null) で AUTH_ERROR を返せるようにする。
-      // これにより popup の「ログイン中」表示も「未ログイン」に切り替わる。
       await removeAccessToken()
-      return { success: false, error: '認証エラー: 再ログインが必要です', code: 'AUTH_ERROR' }
+      errorCode = 'AUTH_ERROR'
+      errMsg = '認証エラー: 再ログインが必要です'
+    } else if (response.status === 400) {
+      errorCode = 'VALIDATION_ERROR'
+      errMsg = 'サーバーバリデーションエラー'
+    } else {
+      errorCode = 'API_ERROR'
+      errMsg = 'サーバーエラーが発生しました'
     }
-    if (response.status === 400) {
-      return {
-        success: false,
-        error: 'サーバーバリデーションエラー',
-        code: 'VALIDATION_ERROR',
-      }
-    }
-    return { success: false, error: 'サーバーエラーが発生しました', code: 'API_ERROR' }
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: errMsg,
+      errorCode,
+    })
+    return { success: false, error: errMsg, code: errorCode }
   }
 
   const data = (await response.json()) as ScrapeResponse
 
-  // 5. 同期結果を保存
+  // 5. 同期結果を保存 (cleanupAndRecordResult が tab を閉じ flag を clear する)
   let status: SyncResult['status']
   if (data.savedCount > 0 && data.duplicateCount === 0) {
     status = 'success'
@@ -261,14 +328,12 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
     // savedCount === 0: 全て重複 or 空データ
     status = 'partial'
   }
-  const syncResult: SyncResult = {
+  await cleanupAndRecordResult({
     status,
     savedCount: data.savedCount,
     duplicateCount: data.duplicateCount,
     duplicates: data.duplicates,
-    timestamp: Date.now(),
-  }
-  await setLastSyncResult(syncResult)
+  })
 
   // 6. 本棚タブをリロード
   await reloadBookshelfTabs()

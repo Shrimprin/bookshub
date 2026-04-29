@@ -677,6 +677,159 @@ describe('background', () => {
     })
   })
 
+  describe('handleSendScrapedBooks cleanup (Phase 5)', () => {
+    function seedTrigger(opts: { tabId?: number; startedAt?: number } = {}) {
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: opts.tabId ?? 55,
+        startedAt: opts.startedAt ?? Date.now() - 1000,
+        source: 'web',
+        store: 'kindle',
+      })
+    }
+
+    it('成功時に tabs.remove を呼び flag を clear し observability フィールドを記録する', async () => {
+      seedTrigger({ tabId: 55, startedAt: Date.now() - 2000 })
+      mockStorageData.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl: 'https://www.amazon.co.jp/foo',
+        lastPageScraped: 3,
+        books: [],
+        seenKeys: [],
+      })
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            savedCount: 5,
+            duplicateCount: 1,
+            duplicates: [{ title: 'dup', existingStores: ['kindle'] }],
+          }),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(55)
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({
+        status: 'partial',
+        savedCount: 5,
+        duplicateCount: 1,
+        trigger: 'web',
+        store: 'kindle',
+        pagesScraped: 3,
+      })
+      expect(result.durationMs).toBeGreaterThan(0)
+    })
+
+    it('401 (AUTH_ERROR) でも tab を閉じ flag を clear し errorCode=AUTH_ERROR を記録する', async () => {
+      seedTrigger({ tabId: 88 })
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: 'Unauthorized' }),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(88)
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({
+        status: 'error',
+        errorCode: 'AUTH_ERROR',
+        trigger: 'web',
+        store: 'kindle',
+      })
+    })
+
+    it('500 (API_ERROR) でも tab を閉じ flag を clear し errorCode=API_ERROR を記録する', async () => {
+      seedTrigger({ tabId: 88 })
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(88)
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({
+        status: 'error',
+        errorCode: 'API_ERROR',
+      })
+    })
+
+    it('NETWORK_ERROR でも tab を閉じ flag を clear し errorCode=NETWORK_ERROR を記録する', async () => {
+      seedTrigger({ tabId: 88 })
+      mockFetch.mockRejectedValue(new TypeError('Failed to fetch'))
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(88)
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({
+        status: 'error',
+        errorCode: 'NETWORK_ERROR',
+      })
+    })
+
+    it('chrome.tabs.remove が throw しても flag は必ず clear される', async () => {
+      seedTrigger({ tabId: 88 })
+      ;(chrome.tabs.remove as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('No tab with id'),
+      )
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ savedCount: 1, duplicateCount: 0, duplicates: [] }),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+    })
+
+    it('trigger flag が無い手動経路では tabs.remove は呼ばれず lastSyncResult のみ書く', async () => {
+      // trigger flag セットしない
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ savedCount: 1, duplicateCount: 0, duplicates: [] }),
+      })
+
+      await handleMessage(
+        { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+        mockSender,
+      )
+
+      expect(chrome.tabs.remove).not.toHaveBeenCalled()
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({ status: 'success' })
+      // trigger 由来のフィールドは未設定
+      expect(result.trigger).toBeUndefined()
+    })
+  })
+
   describe('chrome.tabs.onRemoved listener (handleTabRemoved)', () => {
     it('リスナーがトップレベルで登録される', () => {
       // 最初の import 時に addListener が呼ばれて capturedOnRemoved がセットされる。
