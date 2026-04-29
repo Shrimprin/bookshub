@@ -235,19 +235,44 @@ async function triggerScrapeInner(
   // onRemoved (ユーザーがタブを閉じる) もしくは TTL 切れによる自動 reset で
   // 次の trigger を受け付けられる。複雑化のコストに対して効果が乏しいため
   // sentinel 値による事前 set は行わない。
-  const tab = await chrome.tabs.create({ url: triggerUrl, active: false })
-  if (typeof tab.id !== 'number') {
+  //
+  // tabs.create / setKindleScrapeTrigger が throw した場合に備え、
+  // 全体を try/catch で覆う。throw が外に漏れると onMessageExternal の
+  // sendResponse に到達せず Web 側がタイムアウトするため、必ず
+  // ExternalMessageResponse 形式に変換して返す。
+  let createdTabId: number | undefined
+  try {
+    const tab = await chrome.tabs.create({ url: triggerUrl, active: false })
+    if (typeof tab.id !== 'number') {
+      return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
+    }
+    createdTabId = tab.id
+
+    await setKindleScrapeTrigger({
+      tabId: tab.id,
+      startedAt: Date.now(),
+      source: 'web',
+      store,
+    })
+    return { success: true }
+  } catch (err) {
+    console.warn('[BookHub] triggerScrape failed:', err)
+    // best-effort cleanup: タブを開けたが flag 書込に失敗したケースで孤児タブを残さない
+    if (createdTabId !== undefined) {
+      try {
+        await chrome.tabs.remove(createdTabId)
+      } catch {
+        // タブが既に閉じている等は握りつぶす
+      }
+    }
+    // flag が中途半端に残った可能性も考慮
+    try {
+      await clearKindleScrapeTrigger()
+    } catch {
+      // session storage 障害時も Web 側へのレスポンスは返す必要がある
+    }
     return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
   }
-
-  await setKindleScrapeTrigger({
-    tabId: tab.id,
-    startedAt: Date.now(),
-    source: 'web',
-    store,
-  })
-
-  return { success: true }
 }
 
 // --- リスナーをトップレベルで登録 ---

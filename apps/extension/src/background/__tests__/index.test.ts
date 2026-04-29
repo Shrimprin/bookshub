@@ -767,6 +767,40 @@ describe('background', () => {
         expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
       })
 
+      it('chrome.tabs.create が throw したら TAB_CREATE_FAILED を返し flag をセットしない', async () => {
+        tabsCreate().mockRejectedValue(new Error('Tab creation forbidden'))
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        // 拡張 throw が外に漏れず ExternalMessageResponse 形式で返ること
+        expect(result).toEqual({
+          success: false,
+          error: 'タブの作成に失敗しました',
+          code: 'TAB_CREATE_FAILED',
+        })
+        expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      })
+
+      it('setKindleScrapeTrigger 後段が throw しても作成済みタブは閉じる (best-effort cleanup)', async () => {
+        tabsCreate().mockResolvedValue({ id: 333 })
+        // session storage の set だけ throw させる
+        const sessionSetSpy = vi
+          .spyOn(chrome.storage.session, 'set')
+          .mockRejectedValueOnce(new Error('storage quota'))
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toMatchObject({ success: false, code: 'TAB_CREATE_FAILED' })
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(333)
+        sessionSetSpy.mockRestore()
+      })
+
       it('同時に 2 つの TRIGGER_SCRAPE が来ても tabs.create は 1 回しか呼ばれない (mutex)', async () => {
         // tabs.create を意図的に遅延させて race window を露出させる
         let resolveCreate: ((v: { id: number }) => void) | undefined
