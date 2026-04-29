@@ -66,7 +66,8 @@ export async function triggerKindleScrape(): Promise<TriggerResult> {
             resolve({ status: 'misconfigured' })
             return
           }
-          resolve({ status: 'error', code: response?.code })
+          // exactOptionalPropertyTypes: code は undefined のときフィールド自体を omit する
+          resolve(response?.code ? { status: 'error', code: response.code } : { status: 'error' })
         },
       )
     } catch {
