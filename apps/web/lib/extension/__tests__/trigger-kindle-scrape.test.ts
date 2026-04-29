@@ -13,6 +13,9 @@ describe('triggerKindleScrape', () => {
   afterEach(() => {
     if (originalChrome !== undefined) {
       ;(globalThis as { chrome?: unknown }).chrome = originalChrome
+    } else {
+      // テスト中に貼り付けた chrome global が次のテストファイルにリークしないよう削除
+      delete (globalThis as { chrome?: unknown }).chrome
     }
     if (originalEnv !== undefined) {
       process.env.NEXT_PUBLIC_EXTENSION_ID = originalEnv

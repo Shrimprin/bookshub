@@ -107,9 +107,17 @@ export function scrapeKindleBooks(): RawBookData[] {
     const storeProductId = hasValidAsin ? asin : undefined
 
     if (!title || !author) {
-      console.warn(
-        `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
-      )
+      // 本番では PII 保護のため title/author の値を出さず長さのみ記録する。
+      // 開発時は DOM 構造のデバッグに値そのものが必要なので __IS_DEV__ で出力。
+      if (__IS_DEV__) {
+        console.warn(
+          `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
+        )
+      } else {
+        console.warn(
+          `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (titleLen=${title?.length ?? 0}, authorLen=${author?.length ?? 0}, cardRoot=${cardRoot ? 'found' : 'null'})`,
+        )
+      }
       continue
     }
 
