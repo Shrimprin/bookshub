@@ -12,13 +12,32 @@ export const clearAccessTokenMessageSchema = z.object({
   type: z.literal('CLEAR_ACCESS_TOKEN'),
 })
 
+// 対応ストアは将来 'dmm' 等を追加する。Background 側の STORE_REGISTRY と同期させる
+export const triggerScrapeMessageSchema = z.object({
+  type: z.literal('TRIGGER_SCRAPE'),
+  store: z.enum(['kindle']),
+})
+
 export const externalExtensionMessageSchema = z.discriminatedUnion('type', [
   setAccessTokenMessageSchema,
   clearAccessTokenMessageSchema,
+  triggerScrapeMessageSchema,
 ])
 
 export type SetAccessTokenMessage = z.infer<typeof setAccessTokenMessageSchema>
 export type ClearAccessTokenMessage = z.infer<typeof clearAccessTokenMessageSchema>
+export type TriggerScrapeMessage = z.infer<typeof triggerScrapeMessageSchema>
 export type ExternalExtensionMessage = z.infer<typeof externalExtensionMessageSchema>
 
-export type ExternalMessageResponse = { success: true } | { success: false; error: string }
+// 失敗時のエラーコード。Web 側はメッセージ本文 (error) ではなくこの code で
+// UI 分岐すること。文字列マッチングは i18n / 表記揺れで簡単に壊れるため避ける。
+export type ExternalMessageErrorCode =
+  | 'ALREADY_IN_PROGRESS'
+  | 'UNSUPPORTED_STORE'
+  | 'TAB_CREATE_FAILED'
+  | 'INVALID_ORIGIN'
+  | 'INVALID_MESSAGE'
+
+export type ExternalMessageResponse =
+  | { success: true }
+  | { success: false; error: string; code?: ExternalMessageErrorCode }

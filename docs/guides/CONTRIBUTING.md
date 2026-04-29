@@ -144,24 +144,49 @@ BOOKHUB_API_URL=https://bookshelf.example.com pnpm --filter extension build:prod
 5. （任意）`CRX_PUBLIC_KEY` を `.env` に設定して ID を固定化すると、以降の再読み込みで ID が変わらない
 6. `pnpm dev` で Web アプリを起動してログイン
 
+#### 取り込み操作のフロー (Web からの明示的トリガー)
+
+Kindle 取り込みは **本棚画面の「Kindle から取り込み」ボタン** から起動する。
+ユーザーが Kindle 購入履歴ページを単に閲覧した時に勝手にスクレイプは走らない。
+
+1. ユーザーが `/bookshelf` の「Kindle から取り込み」ボタンを押す
+2. Web → 拡張機能に `TRIGGER_SCRAPE { store: 'kindle' }` を送信
+3. 拡張機能 Background が背景タブを開き (`chrome.tabs.create({ url: '...?pageNumber=1', active: false })`)、
+   返ってきた `tab.id` を含めて `chrome.storage.session` に trigger flag を書き込む
+   (順序は tab 作成 → flag 書込。flag に `tabId` を持たせるため)
+4. Content Script (`kindle.ts`) は flag 存在 + TTL 内 + `IS_TRIGGER_TAB` RPC で
+   自タブが trigger.tabId と一致することを確認した時だけスクレイプを実行
+5. 完了 / 全エラー時に Background が flag を先に clear し、続いてタブを閉じ、
+   `bookhub_last_sync_result` に `errorCode`, `durationMs`, `pagesScraped`,
+   `trigger='web'` 等を記録 (順序: flag clear → tabs.remove。逆だと `onRemoved` が
+   先に走って成功結果を上書きするレースが発生する)
+6. 本棚タブが自動リロードされて結果が表示される
+
+ユーザーが手動でトリガータブを閉じた場合は `chrome.tabs.onRemoved` リスナーが
+flag を回収し、`status: 'error'` の lastSyncResult を書く。
+
+`chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })`
+は SW 起動時のトップレベルで一度実行され、content script から flag を読めるようにする。
+
 #### 動作確認チェックリスト
 
 - [ ] `/login` からログインできる
 - [ ] ログイン後、拡張機能のポップアップが「ログイン中」に変わる
-- [ ] Kindle 購入履歴ページ (`https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/...`) を開くとスクレイピングが成功する
-- [ ] 複数ページある場合、自動的に `?pageNumber=N` を順次遷移して全ページから書籍を収集する (Console に `page 1, page 2, ...` のログ)
+- [ ] Kindle 購入履歴ページを **直接 URL バーで開く** とスクレイプが走らない
+      (Console に `no active trigger, skipping (manual visit)` のログ)
+- [ ] 本棚 `/bookshelf` の「Kindle から取り込み」ボタンを押すと
+      新規タブが背景 (`active: false`) で開きスクレイプが完了後に閉じる
+- [ ] 連続クリックすると 2 回目は「進行中」表示で新規タブが追加で開かない
+- [ ] 拡張機能を未インストール状態でボタンを押すと「拡張機能が見つかりません」と表示される
+- [ ] 取り込み中にトリガータブを手動で閉じると flag が回収され次の trigger が即受け付けられる
 - [ ] 累積完了後、ポップアップに同期結果 (`N 冊を同期しました`) が表示される
-- [ ] 拡張機能を `chrome://extensions` で reload した後も、Web を再訪問せずに同期できる (Phase 1 の修正)
 - [ ] Web アプリでログアウトすると、ポップアップが「未ログイン」に戻る
 
 #### Kindle ページネーション動作確認 (累積セッション)
 
-- [ ] 3 ページ以上ある購入履歴で、ページ 1 を開くと自動で 2, 3, ... と進み最終ページで送信される
+- [ ] 3 ページ以上ある購入履歴でボタンを押すと、ページ 1 から自動で 2, 3, ... と進み最終ページで送信される
 - [ ] 累積中にポップアップを開くと「Kindle 同期中: ページ N まで完了 / M 冊蓄積」と表示される
-- [ ] 途中でタブを閉じる → 5 分以内に再訪問すると続きから再開される
-- [ ] 5 分以上経ってから再訪問すると、新規セッションでページ 1 から始まる
-- [ ] ポップアップの「進行中の同期をリセット」ボタンで累積セッションをクリアできる
-- [ ] AUTH_ERROR 発生時はセッションが保持され、再ログイン後にページを再訪問すると累積データが再送される
+- [ ] AUTH_ERROR 発生時 (未ログイン状態でボタンを押す) は本棚側に「Kindle ログインが必要」相当の lastSyncResult が記録される
 
 ## テスト
 

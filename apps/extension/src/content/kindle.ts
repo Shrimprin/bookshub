@@ -12,7 +12,13 @@ import {
   shouldStopForSafety,
   type ScrapeSession,
 } from './shared/scrape-session.js'
-import { clearScrapeSession, getScrapeSession, setScrapeSession } from '../utils/storage.js'
+import {
+  clearScrapeSession,
+  getKindleScrapeTrigger,
+  getScrapeSession,
+  setScrapeSession,
+} from '../utils/storage.js'
+import { TRIGGER_TTL_MS } from '../utils/constants.js'
 
 const LOG_PREFIX = '[BookHub/Kindle]'
 
@@ -101,9 +107,17 @@ export function scrapeKindleBooks(): RawBookData[] {
     const storeProductId = hasValidAsin ? asin : undefined
 
     if (!title || !author) {
-      console.warn(
-        `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
-      )
+      // 本番では PII 保護のため title/author の値を出さず長さのみ記録する。
+      // 開発時は DOM 構造のデバッグに値そのものが必要なので __IS_DEV__ で出力。
+      if (__IS_DEV__) {
+        console.warn(
+          `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (title="${title}", author="${author}", cardRoot=${cardRoot ? 'found' : 'null'})`,
+        )
+      } else {
+        console.warn(
+          `${LOG_PREFIX} skipping ASIN=${asin ?? '?'} (titleLen=${title?.length ?? 0}, authorLen=${author?.length ?? 0}, cardRoot=${cardRoot ? 'found' : 'null'})`,
+        )
+      }
       continue
     }
 
@@ -243,6 +257,16 @@ export const _internals = {
   navigateTo(url: string): void {
     window.location.href = url
   },
+  // waitForElement はテストで MutationObserver の 10 秒タイムアウトを待ちたくないため
+  // _internals 経由でラップして spy できるようにする。
+  waitForElement(selector: string, timeout?: number): Promise<Element | null> {
+    return waitForElement(selector, timeout)
+  },
+  // isTriggerTab も同様に spy 可能化する。背景タブと手動訪問タブを切り分ける
+  // RPC 失敗時のテストや「不一致タブ」シナリオのテストを容易にする。
+  isTriggerTab(): Promise<boolean> {
+    return isTriggerTab()
+  },
 }
 
 function logParsedBooks(books: ScrapeBook[]): void {
@@ -313,11 +337,18 @@ async function loadOrCreateSession(
 
 async function sendAndClear(books: ScrapeBook[]): Promise<void> {
   if (books.length === 0) {
-    console.warn(`${LOG_PREFIX} 0 books to send, clearing session`)
+    console.warn(`${LOG_PREFIX} 0 books to send, clearing session and aborting`)
     await clearScrapeSession()
+    // trigger 経由の場合は flag/タブが残らないよう background にも通知する。
+    // 手動経由 (trigger 無し) のときは background 側で flag が無いので no-op となる。
+    await notifyAbort('NO_BOOKS')
     return
   }
-  logParsedBooks(books)
+  // logParsedBooks は title/author を最大 5 件 console に出力する。
+  // ユーザー購入履歴は PII であり、本番ビルドではログに残さない。
+  if (__IS_DEV__) {
+    logParsedBooks(books)
+  }
   console.log(`${LOG_PREFIX} sending ${books.length} books to background...`)
   try {
     const response = await sendScrapedBooks(books)
@@ -348,11 +379,38 @@ export async function main(): Promise<void> {
     return
   }
 
+  // Web 本棚からの明示的トリガーが無ければ何もしない (自動スクレイプ廃止)。
+  // ユーザーが Kindle ページを単に閲覧したいだけのケースを尊重する。
+  const trigger = await getKindleScrapeTrigger()
+  if (!trigger) {
+    console.log(`${LOG_PREFIX} no active trigger, skipping (manual visit)`)
+    return
+  }
+  if (Date.now() - trigger.startedAt > TRIGGER_TTL_MS) {
+    console.warn(`${LOG_PREFIX} stale trigger (>${TRIGGER_TTL_MS}ms old), aborting`)
+    // ABORT_SCRAPE で background 側にもタブ close + lastSyncResult 記録を任せる
+    // (clearKindleScrapeTrigger は handleAbortScrape → cleanupAndRecordResult で実行される)
+    await notifyAbort('UNEXPECTED_ERROR')
+    return
+  }
+
+  // tabId 照合: trigger 中に別タブで Kindle 購入履歴を手動訪問された場合、
+  // chrome.storage.session は拡張全体で共有のため そのタブの content script も
+  // flag を読んで進んでしまう。background 経由で sender.tab.id == trigger.tabId
+  // を確認し、不一致なら何もせず return する (notifyAbort は呼ばない: trigger
+  // 本体タブは別途完走するので flag/タブ cleanup を奪ってはいけない)。
+  if (!(await _internals.isTriggerTab())) {
+    console.log(`${LOG_PREFIX} trigger active but on a different tab, skipping`)
+    return
+  }
+
   console.log(`${LOG_PREFIX} waiting for book items to appear...`)
-  const found = await waitForElement(SELECTORS.titleCard, 10_000)
+  const found = await _internals.waitForElement(SELECTORS.titleCard, 10_000)
 
   if (!found) {
-    console.warn(`${LOG_PREFIX} no title cards appeared within 10s`)
+    console.warn(`${LOG_PREFIX} no title cards appeared within 10s, aborting`)
+    // trigger 経由の場合は flag/タブを残さず Web 側にエラーを伝えるために通知する。
+    await notifyAbort('NO_DOM')
     return
   }
 
@@ -427,6 +485,33 @@ export async function main(): Promise<void> {
   _internals.navigateTo(nextUrl)
 }
 
+async function notifyAbort(reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR'): Promise<void> {
+  try {
+    // 一方向通知。background 側 cleanup の成否は問わない。
+    await chrome.runtime.sendMessage({ type: 'ABORT_SCRAPE', reason })
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} failed to notify ABORT_SCRAPE (${reason}):`, err)
+  }
+}
+
+async function isTriggerTab(): Promise<boolean> {
+  try {
+    const response = (await chrome.runtime.sendMessage({ type: 'IS_TRIGGER_TAB' })) as
+      | { success: true; data: { match: boolean } }
+      | { success: false }
+      | undefined
+    if (!response || response.success !== true) return false
+    return response.data.match === true
+  } catch (err) {
+    // background との通信失敗時は安全側に倒して false (= 動作しない) を返す。
+    // 結果として本体タブも止まるが、cleanup は trigger TTL or onRemoved で起こる。
+    console.warn(`${LOG_PREFIX} failed to verify trigger tab match:`, err)
+    return false
+  }
+}
+
 main().catch((error) => {
   console.error(`${LOG_PREFIX} main() failed:`, error)
+  // 予期しない例外でも flag/タブを孤児化させない。await 不要 (top-level catch)。
+  void notifyAbort('UNEXPECTED_ERROR')
 })

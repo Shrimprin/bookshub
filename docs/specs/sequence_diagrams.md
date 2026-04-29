@@ -1,8 +1,12 @@
 # BookHub シーケンス図
 
+<!-- AUTO-GENERATED: Last updated 2026-04-29 from issue #30 implementation -->
+
 主要なユースケースのシーケンス図を Mermaid 形式でまとめたドキュメント。
 
 実装と乖離した場合はソース側を真実とし、本ドキュメントを更新すること。
+
+**最新更新**: Issue #30 Web 本棚からの Kindle スクレイプ trigger フロー実装に伴い、セクション 2「Chrome 拡張機能のスクレイピングフロー」を全面更新。従来の自動スクレイプから Web 明示的 trigger ベースへ移行。
 
 ---
 
@@ -93,94 +97,181 @@ sequenceDiagram
 
 ## 2. Chrome 拡張機能のスクレイピングフロー
 
-ユーザーが Kindle の購入履歴ページを開いたときに、Content Script がページ内の書籍データを抽出し、API 経由で DB に保存するフロー。
+ユーザーが Web 本棚の「Kindle から取り込み」ボタンを押下して、Content Script がページ内の書籍データを抽出し、API 経由で DB に保存するフロー。
 
-Kindle 購入履歴ページは `?pageNumber=N` クエリで完全ナビゲーションするため、Content Script は各ページ遷移で再起動される。`chrome.storage.local` の `bookhub_scrape_session_v1` に進行状態を保存し、複数ページの書籍を累積してから 1 回の API 呼び出しで送信する。
+Web 側が明示的に `TRIGGER_SCRAPE` メッセージを送信することで、Background が背景タブで Kindle 購入履歴ページを開く。Content Script は `chrome.storage.session` の trigger flag を確認した場合のみスクレイプを実行する（手動ページ訪問では実行されない）。Kindle ページは `?pageNumber=N` クエリで完全ナビゲーションするため、Content Script は各ページ遷移で再起動される。`chrome.storage.local` の `bookhub_scrape_session_v1` に進行状態を保存し、複数ページの書籍を累積してから 1 回の API 呼び出しで送信する。
 
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant Page as Kindle ページ<br/>(Amazon)
+    participant Web as 本棚ページ<br/>/bookshelf
+    participant Button as KindleImportButton<br/>(Client Component)
+    participant Bridge as triggerKindleScrape()<br/>(extension bridge)
+    participant BG as Background SW<br/>(background/index.ts)
+    participant TriggerStorage as chrome.storage.session<br/>(trigger flag)
+    participant KindlePage as Kindle ページ<br/>(Amazon)
     participant CS as Content Script<br/>(kindle.ts)
     participant Session as scrape-session.ts<br/>(純粋関数)
     participant Parser as parser.ts
-    participant Storage as chrome.storage<br/>.local
-    participant BG as Background SW<br/>(background/index.ts)
+    participant LocalStorage as chrome.storage.local<br/>(scrape session)
     participant API as /api/scrape<br/>(Edge Route)
     participant DB as Supabase DB
-    participant Tab as 本棚タブ
+    participant BookshelfTab as 本棚タブ
 
-    User->>Page: 購入履歴ページを開く<br/>(contentlist/booksAll/*)
+    User->>Web: /bookshelf にアクセス
+    User->>Button: 「Kindle から取り込み」ボタン押下
 
-    loop 全ページを順次処理 (?pageNumber=1..N)
-        Page->>CS: document_idle で<br/>kindle.ts 実行 (再起動)
-        CS->>CS: extractPageNumber(URL)
-        CS->>Storage: getScrapeSession()
-        alt 既存セッションあり
-            CS->>Session: isSessionStale / originalUrl 検証
-            alt 5 分以上前 / URL 不一致 / 連続性破綻
-                CS->>Storage: clearScrapeSession()
-                CS->>Session: createEmptySession()
-            else 有効
-                CS->>CS: 既存セッションを使用
+    Button->>Bridge: triggerKindleScrape()
+    Bridge->>BG: chrome.runtime.sendMessage<br/>({ type: 'TRIGGER_SCRAPE', store: 'kindle' })
+
+    alt 既に trigger 進行中
+        BG-->>Bridge: { success: false, code: 'ALREADY_IN_PROGRESS' }
+        Bridge-->>Button: { status: 'in-progress' }
+        Button-->>User: 「既に進行中」表示
+    else 初回 / trigger 完了後
+        Note over BG: setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS) は<br/>SW 起動時のトップレベルで一度だけ実行済み
+        BG->>BG: STORE_REGISTRY[store] から<br/>Kindle trigger URL (?pageNumber=1) を取得
+        BG->>KindlePage: chrome.tabs.create()<br/>({ url: trigger_url, active: false })
+        KindlePage-->>BG: tab.id
+        BG->>TriggerStorage: setKindleScrapeTrigger<br/>({ tabId, startedAt, source: 'web', store })
+        Note over BG: tab.create / flag 書込は try/catch で囲み<br/>throw 時は createdTabId を tabs.remove + flag clear<br/>→ TAB_CREATE_FAILED で応答
+        BG-->>Bridge: { success: true }
+        Bridge-->>Button: { status: 'sent' }
+        Button-->>User: 「取り込み開始」表示
+
+        Note over KindlePage,CS: ── trigger フロー開始 ──
+
+        KindlePage->>CS: document_idle で<br/>kindle.ts 実行 (再起動)
+        CS->>TriggerStorage: getKindleScrapeTrigger()
+        alt trigger flag なし or TTL 超過
+            CS->>CS: 手動訪問判定 / 期限切れで early return
+            Note over CS: Console に<br/>'no active trigger, skipping (manual visit)' ログ
+        else trigger flag 有効
+            CS->>BG: chrome.runtime.sendMessage<br/>({ type: 'IS_TRIGGER_TAB' })
+            BG->>TriggerStorage: getKindleScrapeTrigger()
+            BG->>BG: sender.tab.id === trigger.tabId ?
+            BG-->>CS: { success: true, data: { match } }
+            alt match=false (別タブで偶発訪問)
+                CS->>CS: 何もせず return<br/>(本体タブの cleanup を奪わない)
+            else match=true (trigger 本体タブ)
+                CS->>CS: トリガーセッション有効、スクレイプ実行
             end
-        else セッションなし
-            CS->>Session: createEmptySession()
         end
 
-        CS->>Page: scrapeKindleBooks()
-        Page-->>CS: RawBookData[]
-        CS->>Parser: parseBooks(rawBooks, 'kindle')
-        Parser-->>CS: ScrapeBook[]
-        CS->>Session: mergeBooks(existing, newBooks)
-        Session-->>CS: 累積後の books
+        loop 全ページを順次処理 (?pageNumber=1..N)
+            CS->>LocalStorage: getScrapeSession()
+            alt 既存セッションあり
+                CS->>Session: isSessionStale / originalUrl 検証
+                alt 5 分以上前 / URL 不一致 / 連続性破綻
+                    CS->>LocalStorage: clearScrapeSession()
+                    CS->>Session: createEmptySession()
+                else 有効
+                    CS->>CS: 既存セッションを使用
+                end
+            else セッションなし
+                CS->>Session: createEmptySession()
+            end
 
-        CS->>Page: findPageLinkByNumber(currentPage + 1)
-        alt 次ページあり
-            CS->>Storage: setScrapeSession(updated)
-            CS->>Page: window.location.href = ?pageNumber=N+1
-            Note over Page: ページ遷移 → CS 再起動
-        else 最終ページ
-            CS->>BG: sendScrapedBooks(allBooks)
-            BG->>BG: sender.id 検証
-            BG->>Storage: getAccessToken()
-            Storage-->>BG: token
-            BG->>BG: scrapePayloadSchema.safeParse()
-            BG->>API: POST /api/scrape<br/>Authorization: Bearer token
-            API->>API: createClientFromToken(token)
-            API->>DB: processScrapePayload()
-            DB->>DB: book_id 解決 + user_books UPSERT
-            DB-->>API: {savedCount, duplicateCount, duplicates}
-            API-->>BG: 200 OK
-            BG->>Storage: setLastSyncResult(result)
-            BG->>Tab: chrome.tabs.query + reload
-            BG-->>CS: {success: true, data}
-            CS->>Storage: clearScrapeSession()
+            CS->>KindlePage: scrapeKindleBooks()
+            KindlePage-->>CS: RawBookData[]
+            CS->>Parser: parseBooks(rawBooks, 'kindle')
+            Parser-->>CS: ScrapeBook[]
+            CS->>Session: mergeBooks(existing, newBooks)
+            Session-->>CS: 累積後の books
+
+            CS->>KindlePage: findPageLinkByNumber(currentPage + 1)
+            alt 次ページあり
+                CS->>LocalStorage: setScrapeSession(updated)
+                CS->>KindlePage: window.location.href = ?pageNumber=N+1
+                Note over KindlePage: ページ遷移 → CS 再起動
+            else 最終ページ / MAX_BOOKS 到達
+                CS->>BG: sendScrapedBooks(allBooks)
+                Note over BG: ── API 送信・cleanup ──
+
+                BG->>BG: sender.id 検証
+                BG->>LocalStorage: getAccessToken()
+                LocalStorage-->>BG: token
+                BG->>BG: scrapePayloadSchema.safeParse()
+                BG->>API: POST /api/scrape<br/>Authorization: Bearer token
+                API->>API: createClientFromToken(token)
+                API->>DB: processScrapePayload()
+                DB->>DB: book_id 解決 + user_books UPSERT
+                DB-->>API: {savedCount, duplicateCount, duplicates}
+                API-->>BG: 200 OK + scrapeResponse
+
+                BG->>BG: scrapeResponseSchema.safeParse()<br/>で実行時検証
+                BG->>LocalStorage: setLastSyncResult<br/>({ status, savedCount, ...,<br/>trigger: 'web', durationMs, pagesScraped })
+                BG->>TriggerStorage: clearKindleScrapeTrigger()
+                BG->>KindlePage: chrome.tabs.remove() でタブ閉じ
+                BG->>BookshelfTab: chrome.tabs.query + reload
+                BG-->>CS: {success: true, data}
+                CS->>LocalStorage: clearScrapeSession()
+            end
+        end
+
+        alt content script で完走不能 (NO_DOM / NO_BOOKS / UNEXPECTED_ERROR)
+            CS->>BG: ABORT_SCRAPE<br/>{ reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR' }
+            BG->>TriggerStorage: clearKindleScrapeTrigger() (先に flag clear)
+            BG->>KindlePage: chrome.tabs.remove()
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', errorCode: 'UNKNOWN_ERROR', ... })
+        else AUTH_ERROR / NETWORK_ERROR (sendScrapedBooks 応答内)
+            BG-->>CS: { success: false, code: 'AUTH_ERROR' | 'NETWORK_ERROR' }
+            Note over CS: scrapeSession を保持し、ユーザーの再ログインを待つ<br/>(ABORT_SCRAPE は送らない、cleanup も走らない)
+        else API_ERROR / VALIDATION_ERROR (復帰不能)
+            BG->>TriggerStorage: clearKindleScrapeTrigger() (先に flag clear)
+            BG->>KindlePage: chrome.tabs.remove()
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', errorCode, ... })
+        end
+    end
+
+    Note over BG: ── 孤児フラグ回収 (chrome.tabs.onRemoved) ──
+    alt ユーザーがトリガータブを手動で閉じた場合
+        BG->>BG: tabs.onRemoved リスナー発火
+        BG->>TriggerStorage: trigger 取得し tabId 一致確認
+        alt 一致 (孤児タブ)
+            BG->>TriggerStorage: clearKindleScrapeTrigger()
+            BG->>LocalStorage: setLastSyncResult<br/>({ status: 'error', error: 'タブが閉じられました' })
+        else 不一致 (関係ないタブ)
+            Note over BG: no-op
         end
     end
 ```
 
 ### ポイント
 
-- `manifest.config.ts` の `matches` で `contentlist/booksAll/*` に絞っており、それ以外のページでは Content Script は実行されない
-- `parser.ts` および `scrape-session.ts` は DOM 非依存の純粋関数で、ユニットテスト容易性を確保
-- バリデーションは Content Script 層・Background 層・API 層の 3 重で行う（信頼境界は API 層）
-- ページネーション中にユーザーがタブを閉じた場合、5 分以内に再訪すれば続きから再開、5 分超で破棄
-- セーフティ: 累積 500 冊または 50 ページ到達で強制送信 (`scrapePayloadSchema.books.max(500)` と一致)
-- AUTH_ERROR / NETWORK_ERROR 時はセッションを保持して、ログイン後の再訪で再送可能
-- 同期完了後に `chrome.tabs.reload` で本棚タブを自動リロードし、UI を最新化する
-- レート制限は Edge Runtime ではステートレスのため Cloudflare WAF 側で設定する
+- **Web 本棚からの明示的トリガー**: `/bookshelf` 画面の「Kindle から取り込み」ボタン (KindleImportButton) を押下 → `triggerKindleScrape()` → `chrome.runtime.sendMessage()` で `TRIGGER_SCRAPE` を Background へ送信
+- **trigger flag ライフサイクル**: Background が `chrome.storage.session` に `bookhub_kindle_trigger` フラグを書込 → Content Script で flag を読み込んでスクレイプ実行判定 → 完了 / エラー時に Background が flag を clear。flag は session 領域なので拡張機能 reload で消去されるが、設定時に `setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })` でアクセス制御を開放し、Content Script から読めるようにする
+- **孤児フラグ自動回収**: ユーザーがトリガータブを手動で閉じた場合、Background の `chrome.tabs.onRemoved` リスナーが flag と TTL を確認し、必要に応じて cleanup (`clearKindleScrapeTrigger`, `setLastSyncResult` status=error)
+- **手動訪問との区別**: trigger flag がない時は Content Script が early return し、console に `'no active trigger, skipping (manual visit)'` ログを出す。これにより Kindle ページの手動訪問ではスクレイプが走らないことを保証
+- **trigger TTL**: `TRIGGER_TTL_MS` (10 分) を超えた flag は孤児と見做す。content script と background の双方がこの値で timeout をチェックし、一方が失敗した際の保護となる
+- **ABORT_SCRAPE メッセージ**: Content Script が完走不可（例: DOM 待機タイムアウト、書籍なし等）と判定した場合、内部メッセージ `{ type: 'ABORT_SCRAPE', reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR' }` を Background に送信。Background は reason を `ABORT_REASON_MESSAGES` でホワイトリスト検証してから `lastSyncResult.error` に記録する
+- **manifest.config.ts** の `matches` で `contentlist/booksAll/*` に絞っており、それ以外のページでは Content Script は実行されない
+- **`parser.ts` および `scrape-session.ts`** は DOM 非依存の純粋関数で、ユニットテスト容易性を確保
+- **バリデーション 3 重**: Content Script 層（`scrapeBooks()` → `parseBooks()`）・Background 層（`handleSendScrapedBooks()` → `scrapePayloadSchema.safeParse()`）・API 層（`scrapeResponseSchema.safeParse()`）で順次実行。信頼境界は API 層
+- **ページネーション中にタブ閉じ**: ユーザーが取り込み途中のタブを手動で閉じた場合、既存セッションが 5 分以内に再度訪問で復帰可能（`tabs.onRemoved` で cleanup 記録されるが、session は local 領域に残る）。5 分超で破棄
+- **セーフティ**: 累積 500 冊または 50 ページ到達で強制送信 (`scrapePayloadSchema.books.max(500)` と一致)。これを超えるページが存在する場合は複数回送信に分割される
+- **error パターン**: AUTH_ERROR / NETWORK_ERROR 時はセッションを保持して、ログイン後の再訪で再送可能。UNKNOWN_ERROR （DOM 待機失敗等）は ABORT_SCRAPE で記録
+- **SyncResult 後方互換拡張**: `errorCode`, `trigger`, `startedAt`, `durationMs`, `pagesScraped`, `store` を optional フィールドとして追加。旧データはこれらなしで保存されており、読み込み時に undefined として扱われる
+- **同期完了後リロード**: 完了時に `chrome.tabs.reload()` で本棚タブを自動リロードし、UI を最新化する
+- **レート制限**: Edge Runtime はステートレスのため Cloudflare WAF 側で設定する
 
 ### エラーパターン
 
-| エラー条件             | コード             | レスポンス              |
-| ---------------------- | ------------------ | ----------------------- |
-| アクセストークンなし   | `AUTH_ERROR`       | Background が即座に拒否 |
-| API が 401             | `AUTH_ERROR`       | 「再ログインが必要」    |
-| Zod バリデーション失敗 | `VALIDATION_ERROR` | 詳細メッセージ          |
-| API が 400             | `VALIDATION_ERROR` | リクエスト不正          |
-| API が 5xx             | `API_ERROR`        | サーバーエラー          |
-| `fetch` 失敗           | `NETWORK_ERROR`    | ネットワークエラー      |
+| エラー条件                     | コード                | 記録場所        | 説明                                                        |
+| ------------------------------ | --------------------- | --------------- | ----------------------------------------------------------- |
+| Web 側の trigger race          | `ALREADY_IN_PROGRESS` | externalMessage | 別の trigger が進行中。Web UI に「既に進行中」警告          |
+| trigger message 形式不正       | `INVALID_MESSAGE`     | externalMessage | Zod スキーマバリデーション失敗                              |
+| 送信元オリジン未許可           | `INVALID_ORIGIN`      | externalMessage | sender.origin が허용 목录에 없음                            |
+| アクセストークンなし           | `AUTH_ERROR`          | lastSyncResult  | Background がトークン未取得で拒否                           |
+| API が 401 Unauthorized        | `AUTH_ERROR`          | lastSyncResult  | トークン有効期限切れまたはサーバー側認証エラー              |
+| DOM 要素待機タイムアウット     | `UNKNOWN_ERROR`       | lastSyncResult  | Content Script が ABORT_SCRAPE で報告（reason: NO_DOM）     |
+| スクレイプ対象の書籍なし       | `UNKNOWN_ERROR`       | lastSyncResult  | Content Script が ABORT_SCRAPE で報告（reason: NO_BOOKS）   |
+| Zod バリデーション失敗         | `VALIDATION_ERROR`    | lastSyncResult  | Content Script / Background 層の payload 検証失敗           |
+| API が 400 Bad Request         | `VALIDATION_ERROR`    | lastSyncResult  | API 側のリクエストバリデーション失敗                        |
+| API が 5xx                     | `API_ERROR`           | lastSyncResult  | サーバーエラー                                              |
+| `fetch` 失敗                   | `NETWORK_ERROR`       | lastSyncResult  | ネットワーク接続エラー（再試行可能）                        |
+| trigger flag TTL 超過          | `UNKNOWN_ERROR`       | lastSyncResult  | Content Script / Background が TTL チェックで期限切れ判定   |
+| トリガータブが手動で閉じられた | `UNKNOWN_ERROR`       | lastSyncResult  | tabs.onRemoved で回収、error メッセージ「タブが閉じられた」 |
 
 ---
 

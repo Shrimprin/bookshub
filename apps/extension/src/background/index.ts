@@ -1,18 +1,60 @@
-import { scrapePayloadSchema, externalExtensionMessageSchema } from '@bookhub/shared'
-import type { ScrapeResponse, ExternalMessageResponse } from '@bookhub/shared'
-import type { ExtensionMessage, MessageResponse, SyncResult } from '../types/messages.js'
+import {
+  scrapePayloadSchema,
+  scrapeResponseSchema,
+  externalExtensionMessageSchema,
+} from '@bookhub/shared'
+import type { ScrapeResponse, ExternalMessageResponse, TriggerScrapeMessage } from '@bookhub/shared'
+import type {
+  AbortScrapeReason,
+  ExtensionMessage,
+  IsTriggerTabResponse,
+  MessageResponse,
+  SyncResult,
+} from '../types/messages.js'
 import {
   getAccessToken,
   setAccessToken,
   removeAccessToken,
   setLastSyncResult,
+  getKindleScrapeTrigger,
+  setKindleScrapeTrigger,
+  clearKindleScrapeTrigger,
+  getScrapeSession,
 } from '../utils/storage.js'
+import { TRIGGER_TTL_MS } from '../utils/constants.js'
+import type { ErrorCode } from '../types/messages.js'
+
+// Web 本棚から trigger を受け付けたとき、開くべき URL とコンテンツスクリプトの match パターン。
+// 将来 'dmm' 等を追加する場合はこの registry にエントリを足し、TriggerScrapeMessage の
+// store enum を拡張する。pageNumber=1 を URL に含めることで、kindle.ts 側の
+// loadOrCreateSession の「ページ 1 で既存セッションを破棄」分岐に乗せる。
+const STORE_REGISTRY = {
+  kindle: {
+    triggerUrl:
+      'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=1',
+  },
+} as const satisfies Record<TriggerScrapeMessage['store'], { triggerUrl: string }>
 
 // --- Service Worker 初期化 ---
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[BookHub] Extension installed')
 })
+
+// chrome.storage.session はデフォルトで content script からアクセス不可。
+// Kindle content script (kindle.ts) が trigger flag を読めるよう、明示的に
+// TRUSTED_AND_UNTRUSTED_CONTEXTS を設定する。設定は Chrome に永続化されるが、
+// SW 再起動・拡張更新時にも確実に有効化するためトップレベルで毎回呼ぶ。
+// (idempotent な操作で副作用なし)
+try {
+  void chrome.storage.session.setAccessLevel({
+    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
+  })
+} catch {
+  // 古い Chrome バージョン等で setAccessLevel 未対応の場合に備え握りつぶす。
+  // その場合は trigger flag の読み取りが失敗するが、kindle.ts 側で
+  // try/catch せず main() failed として記録されるので問題が顕在化する。
+}
 
 // --- メッセージハンドラ（テスト用に export） ---
 
@@ -28,7 +70,7 @@ function isValidMessage(message: unknown): message is ExtensionMessage {
 export async function handleMessage(
   message: unknown,
   sender: chrome.runtime.MessageSender,
-): Promise<MessageResponse<ScrapeResponse>> {
+): Promise<MessageResponse<ScrapeResponse> | IsTriggerTabResponse> {
   // 自拡張機能からのメッセージのみ受け付ける
   if (sender.id !== chrome.runtime.id) {
     return { success: false, error: '不正な送信元です', code: 'UNKNOWN_ERROR' }
@@ -44,9 +86,50 @@ export async function handleMessage(
     case 'RELOAD_BOOKSHELF':
       await reloadBookshelfTabs()
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
+    case 'ABORT_SCRAPE': {
+      // isValidMessage は type フィールドのみ検証するため reason を runtime check する。
+      // 自拡張内のメッセージとはいえ、未知の値が ABORT_REASON_MESSAGES のキー欠落で
+      // undefined を lastSyncResult.error に書き込む事故を防ぐ。
+      const reason: AbortScrapeReason = VALID_ABORT_REASONS.has(message.reason as AbortScrapeReason)
+        ? (message.reason as AbortScrapeReason)
+        : 'UNEXPECTED_ERROR'
+      await handleAbortScrape(reason)
+      return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
+    }
+    case 'IS_TRIGGER_TAB': {
+      // sender.tab.id と trigger.tabId を比較して content script に返す。
+      // tab がそもそも tab 由来でないリクエスト (popup 等) は false で返す。
+      const senderTabId = sender.tab?.id
+      const trigger = await getKindleScrapeTrigger()
+      const match =
+        typeof senderTabId === 'number' && trigger !== null && trigger.tabId === senderTabId
+      return { success: true, data: { match } }
+    }
     default:
       return { success: false, error: '不明なメッセージタイプです', code: 'UNKNOWN_ERROR' }
   }
+}
+
+const VALID_ABORT_REASONS = new Set<AbortScrapeReason>(['NO_DOM', 'NO_BOOKS', 'UNEXPECTED_ERROR'])
+
+const ABORT_REASON_MESSAGES: Record<AbortScrapeReason, string> = {
+  NO_DOM: 'Kindle ページの読み込みに時間がかかりました',
+  NO_BOOKS: '取り込み対象の書籍が見つかりませんでした',
+  UNEXPECTED_ERROR: '予期しないエラーで取り込みを中止しました',
+}
+
+// content script から「完走できない」通知を受けたときの cleanup。
+// trigger 経由 / 手動経由いずれでも cleanupAndRecordResult が動作するため、
+// trigger flag が無くても呼んで OK (lastSyncResult のみ書かれる)。
+async function handleAbortScrape(reason: AbortScrapeReason): Promise<void> {
+  await cleanupAndRecordResult({
+    status: 'error',
+    savedCount: 0,
+    duplicateCount: 0,
+    duplicates: [],
+    error: ABORT_REASON_MESSAGES[reason],
+    errorCode: 'UNKNOWN_ERROR',
+  })
 }
 
 // --- 外部メッセージハンドラ (Web アプリからのトークン受け渡し) ---
@@ -62,15 +145,20 @@ export async function handleExternalMessage(
 ): Promise<ExternalMessageResponse> {
   // 1. origin 検証 - 許可リストに載っていないオリジンからのメッセージは全て拒否
   if (!isAllowedOrigin(sender.origin)) {
-    return { success: false, error: '許可されていない送信元です' }
+    return { success: false, error: '許可されていない送信元です', code: 'INVALID_ORIGIN' }
   }
 
   // 2. メッセージ形式バリデーション (Zod)
   const parsed = externalExtensionMessageSchema.safeParse(message)
   if (!parsed.success) {
+    // Zod の issue message を外部に返さない: 受理可能 type の列挙等を含み、
+    // 将来 externally_connectable を広げた場合の情報漏洩につながり得る。
+    // 詳細は SW console (chrome://extensions) で確認可能。
+    console.warn('[BookHub] external message rejected:', parsed.error.issues)
     return {
       success: false,
-      error: `不正なメッセージ形式: ${parsed.error.issues[0]?.message ?? 'unknown'}`,
+      error: '不正なメッセージ形式です',
+      code: 'INVALID_MESSAGE',
     }
   }
 
@@ -82,6 +170,118 @@ export async function handleExternalMessage(
     case 'CLEAR_ACCESS_TOKEN':
       await removeAccessToken()
       return { success: true }
+    case 'TRIGGER_SCRAPE':
+      return await triggerScrape(parsed.data.store)
+  }
+}
+
+// triggerScrape は内部で複数の await を経るため、二つの TRIGGER_SCRAPE が
+// 同時に到達すると両方が「flag 不在」を見て 2 タブを開いてしまう race window
+// (storage check と tabs.create の間) がある。Service Worker は単一スレッドなので
+// 同期フラグで mutex 化すれば確実に防げる。SW dormant 時には消えるが、その時点で
+// 進行中処理も無いので問題ない。
+let _triggerScrapeInProgress = false
+
+async function triggerScrape(
+  store: TriggerScrapeMessage['store'],
+): Promise<ExternalMessageResponse> {
+  const config = STORE_REGISTRY[store]
+  if (!config) {
+    // Zod parse で弾かれるはずだが、防衛的に
+    return { success: false, error: '対応していないストアです', code: 'UNSUPPORTED_STORE' }
+  }
+
+  // 同時押し防止: 別の triggerScrape が awaitable な処理中なら即拒否
+  if (_triggerScrapeInProgress) {
+    return {
+      success: false,
+      error: '取り込みが既に進行中です',
+      code: 'ALREADY_IN_PROGRESS',
+    }
+  }
+  _triggerScrapeInProgress = true
+  try {
+    return await triggerScrapeInner(store, config.triggerUrl)
+  } finally {
+    _triggerScrapeInProgress = false
+  }
+}
+
+async function triggerScrapeInner(
+  store: TriggerScrapeMessage['store'],
+  triggerUrl: string,
+): Promise<ExternalMessageResponse> {
+  // 重複ガード: 既存 trigger flag が「TTL 内 + タブ生存」であれば作り直さない
+  const existing = await getKindleScrapeTrigger()
+  if (existing) {
+    const elapsed = Date.now() - existing.startedAt
+    let alive = false
+    if (elapsed < TRIGGER_TTL_MS) {
+      try {
+        await chrome.tabs.get(existing.tabId)
+        alive = true
+      } catch {
+        alive = false
+      }
+    }
+    if (alive) {
+      return {
+        success: false,
+        error: '取り込みが既に進行中です',
+        code: 'ALREADY_IN_PROGRESS',
+      }
+    }
+    // 孤児 flag を回収して新規作成へ
+    await clearKindleScrapeTrigger()
+  }
+
+  // 新規タブを background で開く。pageNumber=1 を含む URL なので、
+  // kindle.ts 側の loadOrCreateSession が旧セッションを破棄して新規開始する。
+  //
+  // race window: tabs.create resolve から setKindleScrapeTrigger 完了までの数 ms 間、
+  // 仮に content script が main() を実行すると flag 未設定で skip してしまう。
+  // 実際には Amazon SPA の document_idle は数百 ms 以上かかるため発生確率は事実上ゼロ。
+  // 万一発生しても TRIGGER_TTL_MS 経過後に「タブ生存中だが flag 不在」状態になるので、
+  // onRemoved (ユーザーがタブを閉じる) もしくは TTL 切れによる自動 reset で
+  // 次の trigger を受け付けられる。複雑化のコストに対して効果が乏しいため
+  // sentinel 値による事前 set は行わない。
+  //
+  // tabs.create / setKindleScrapeTrigger が throw した場合に備え、
+  // 全体を try/catch で覆う。throw が外に漏れると onMessageExternal の
+  // sendResponse に到達せず Web 側がタイムアウトするため、必ず
+  // ExternalMessageResponse 形式に変換して返す。
+  let createdTabId: number | undefined
+  try {
+    const tab = await chrome.tabs.create({ url: triggerUrl, active: false })
+    if (typeof tab.id !== 'number') {
+      return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
+    }
+    createdTabId = tab.id
+
+    await setKindleScrapeTrigger({
+      tabId: tab.id,
+      startedAt: Date.now(),
+      source: 'web',
+      store,
+    })
+    return { success: true }
+  } catch (err) {
+    console.warn('[BookHub] triggerScrape failed:', err)
+    // best-effort cleanup: タブを開けたが flag 書込に失敗したケースで孤児タブを残さない
+    if (createdTabId !== undefined) {
+      try {
+        await chrome.tabs.remove(createdTabId)
+      } catch {
+        // タブが既に閉じている等は握りつぶす
+      }
+    }
+    // flag が中途半端に残った可能性も考慮
+    try {
+      await clearKindleScrapeTrigger()
+    } catch {
+      // session storage 障害時も Web 側へのレスポンスは返す必要がある
+    }
+    return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
   }
 }
 
@@ -101,23 +301,105 @@ chrome.runtime.onMessageExternal.addListener(
   },
 )
 
+// ユーザーが trigger 経由で開いたタブを手動で閉じた場合に、
+// 孤児 flag を残さないよう回収し、Web 側に状況を伝えるため lastSyncResult にエラーを書く。
+// service worker が dormant 復帰しても addListener はトップレベル登録なので再登録される。
+chrome.tabs.onRemoved.addListener((tabId: number) => {
+  void handleTabRemoved(tabId)
+})
+
+export async function handleTabRemoved(tabId: number): Promise<void> {
+  const trigger = await getKindleScrapeTrigger()
+  if (!trigger || trigger.tabId !== tabId) return
+
+  const now = Date.now()
+  await clearKindleScrapeTrigger()
+  await setLastSyncResult({
+    status: 'error',
+    savedCount: 0,
+    duplicateCount: 0,
+    duplicates: [],
+    error: 'タブが閉じられました',
+    errorCode: 'UNKNOWN_ERROR',
+    timestamp: now,
+    trigger: trigger.source,
+    startedAt: trigger.startedAt,
+    durationMs: now - trigger.startedAt,
+    store: trigger.store,
+  })
+}
+
 // --- スクレイピングデータ送信 ---
+
+// scrape の終了パスをすべて通す共通クリーンアップ。
+// trigger flag があれば対応タブを閉じる (failure含む) + flag clear し、
+// observability フィールド (durationMs, pagesScraped, trigger, store) を
+// lastSyncResult に必ず付与する。
+async function cleanupAndRecordResult(
+  partial: Pick<
+    SyncResult,
+    'status' | 'savedCount' | 'duplicateCount' | 'duplicates' | 'error' | 'errorCode'
+  >,
+): Promise<void> {
+  const trigger = await getKindleScrapeTrigger()
+  const session = await getScrapeSession()
+  const now = Date.now()
+
+  // flag を tabs.remove より先にクリアする。
+  // 順序を逆にすると、自分で閉じたタブの onRemoved が走った時点で
+  // handleTabRemoved がまだ flag を読めてしまい、正常終了で書いた lastSyncResult を
+  // 「タブが閉じられました」エラーで上書きしてしまうレース window が生まれる。
+  // 先に flag を消しておけば onRemoved 側は trigger=null で no-op になる。
+  const tabIdToClose = trigger?.tabId
+  await clearKindleScrapeTrigger()
+
+  if (tabIdToClose !== undefined) {
+    try {
+      await chrome.tabs.remove(tabIdToClose)
+    } catch {
+      // タブが既に閉じられているケース等は握りつぶす。
+    }
+  }
+
+  await setLastSyncResult({
+    ...partial,
+    timestamp: now,
+    trigger: trigger?.source,
+    startedAt: trigger?.startedAt,
+    durationMs: trigger ? now - trigger.startedAt : undefined,
+    pagesScraped: session?.lastPageScraped,
+    store: trigger?.store,
+  })
+}
 
 async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse<ScrapeResponse>> {
   // 1. 認証トークン取得
   const token = await getAccessToken()
   if (!token) {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: '未認証: ログインが必要です',
+      errorCode: 'AUTH_ERROR',
+    })
     return { success: false, error: '未認証: ログインが必要です', code: 'AUTH_ERROR' }
   }
 
   // 2. バリデーション
   const parsed = scrapePayloadSchema.safeParse({ books })
   if (!parsed.success) {
-    return {
-      success: false,
-      error: `バリデーションエラー: ${parsed.error.issues[0]?.message ?? '不正なデータ'}`,
-      code: 'VALIDATION_ERROR',
-    }
+    const errMsg = `バリデーションエラー: ${parsed.error.issues[0]?.message ?? '不正なデータ'}`
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: errMsg,
+      errorCode: 'VALIDATION_ERROR',
+    })
+    return { success: false, error: errMsg, code: 'VALIDATION_ERROR' }
   }
 
   // 3. API にPOST
@@ -132,31 +414,87 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
       body: JSON.stringify({ books: parsed.data.books }),
     })
   } catch {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'ネットワークエラーが発生しました',
+      errorCode: 'NETWORK_ERROR',
+    })
     return { success: false, error: 'ネットワークエラーが発生しました', code: 'NETWORK_ERROR' }
   }
 
   // 4. レスポンスハンドリング
   if (!response.ok) {
+    let errorCode: ErrorCode
+    let errMsg: string
     if (response.status === 401) {
       // 期限切れトークンを storage から削除して、次回 sendScrapedBooks 時に
       // 早期 return (token === null) で AUTH_ERROR を返せるようにする。
-      // これにより popup の「ログイン中」表示も「未ログイン」に切り替わる。
       await removeAccessToken()
-      return { success: false, error: '認証エラー: 再ログインが必要です', code: 'AUTH_ERROR' }
+      errorCode = 'AUTH_ERROR'
+      errMsg = '認証エラー: 再ログインが必要です'
+    } else if (response.status === 400) {
+      errorCode = 'VALIDATION_ERROR'
+      errMsg = 'サーバーバリデーションエラー'
+    } else {
+      errorCode = 'API_ERROR'
+      errMsg = 'サーバーエラーが発生しました'
     }
-    if (response.status === 400) {
-      return {
-        success: false,
-        error: 'サーバーバリデーションエラー',
-        code: 'VALIDATION_ERROR',
-      }
-    }
-    return { success: false, error: 'サーバーエラーが発生しました', code: 'API_ERROR' }
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: errMsg,
+      errorCode,
+    })
+    return { success: false, error: errMsg, code: errorCode }
   }
 
-  const data = (await response.json()) as ScrapeResponse
+  // 5. レスポンス形式の実行時検証 (型キャストではなく Zod parse)。
+  //    自社 API への Bearer 認証付きリクエストとはいえ、API バージョンずれや
+  //    リバースプロキシ介在で予期しない shape が返ってきたとき savedCount/duplicates
+  //    が undefined のまま伝播するのを防ぐ。
+  let rawJson: unknown
+  try {
+    rawJson = await response.json()
+  } catch {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'サーバーレスポンスの読み取りに失敗しました',
+      errorCode: 'API_ERROR',
+    })
+    return {
+      success: false,
+      error: 'サーバーレスポンスの読み取りに失敗しました',
+      code: 'API_ERROR',
+    }
+  }
+  const parsedResponse = scrapeResponseSchema.safeParse(rawJson)
+  if (!parsedResponse.success) {
+    console.warn('[BookHub] /api/scrape returned invalid shape:', parsedResponse.error.issues)
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'サーバーレスポンスの形式が不正です',
+      errorCode: 'API_ERROR',
+    })
+    return {
+      success: false,
+      error: 'サーバーレスポンスの形式が不正です',
+      code: 'API_ERROR',
+    }
+  }
+  const data: ScrapeResponse = parsedResponse.data
 
-  // 5. 同期結果を保存
+  // 6. 同期結果を保存 (cleanupAndRecordResult が tab を閉じ flag を clear する)
   let status: SyncResult['status']
   if (data.savedCount > 0 && data.duplicateCount === 0) {
     status = 'success'
@@ -166,16 +504,14 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
     // savedCount === 0: 全て重複 or 空データ
     status = 'partial'
   }
-  const syncResult: SyncResult = {
+  await cleanupAndRecordResult({
     status,
     savedCount: data.savedCount,
     duplicateCount: data.duplicateCount,
     duplicates: data.duplicates,
-    timestamp: Date.now(),
-  }
-  await setLastSyncResult(syncResult)
+  })
 
-  // 6. 本棚タブをリロード
+  // 7. 本棚タブをリロード
   await reloadBookshelfTabs()
 
   return { success: true, data }

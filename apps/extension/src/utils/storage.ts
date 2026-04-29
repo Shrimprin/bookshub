@@ -1,11 +1,26 @@
 import type { SyncResult } from '../types/messages.js'
 import type { ScrapeSession } from '../content/shared/scrape-session.js'
+import type { ScrapeStore, ScrapeTriggerSource } from './constants.js'
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'bookhub_access_token',
   LAST_SYNC_RESULT: 'bookhub_last_sync_result',
   SCRAPE_SESSION: 'bookhub_scrape_session_v1',
+  // chrome.storage.session 領域に保存。ブラウザ再起動で自動消滅させ、
+  // 永続化による「孤児フラグで以後 trigger できない」事故を避ける。
+  KINDLE_SCRAPE_TRIGGER: 'bookhub_kindle_trigger',
 } as const
+
+// Web 側ボタン押下で開始した Kindle スクレイプの進行中状態。
+// tabId は終了時 (cleanup) と onRemoved 監視用。
+// source / store は constants.ts と単一定義。型を分散させると追加時に
+// SyncResult.trigger 等との整合が型レベルで取れなくなるため。
+export type KindleScrapeTrigger = {
+  tabId: number
+  startedAt: number
+  source: ScrapeTriggerSource
+  store: ScrapeStore
+}
 
 export async function getAccessToken(): Promise<string | null> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.ACCESS_TOKEN])
@@ -92,4 +107,30 @@ export async function setScrapeSession(session: ScrapeSession): Promise<void> {
 
 export async function clearScrapeSession(): Promise<void> {
   await chrome.storage.local.remove([STORAGE_KEYS.SCRAPE_SESSION])
+}
+
+function isKindleScrapeTrigger(value: unknown): value is KindleScrapeTrigger {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  if (typeof v.tabId !== 'number' || !Number.isInteger(v.tabId) || v.tabId < 0) return false
+  if (typeof v.startedAt !== 'number' || !Number.isFinite(v.startedAt) || v.startedAt < 0) {
+    return false
+  }
+  if (v.source !== 'web' && v.source !== 'auto') return false
+  if (v.store !== 'kindle') return false
+  return true
+}
+
+export async function getKindleScrapeTrigger(): Promise<KindleScrapeTrigger | null> {
+  const result = await chrome.storage.session.get([STORAGE_KEYS.KINDLE_SCRAPE_TRIGGER])
+  const raw = result[STORAGE_KEYS.KINDLE_SCRAPE_TRIGGER]
+  return isKindleScrapeTrigger(raw) ? raw : null
+}
+
+export async function setKindleScrapeTrigger(value: KindleScrapeTrigger): Promise<void> {
+  await chrome.storage.session.set({ [STORAGE_KEYS.KINDLE_SCRAPE_TRIGGER]: value })
+}
+
+export async function clearKindleScrapeTrigger(): Promise<void> {
+  await chrome.storage.session.remove([STORAGE_KEYS.KINDLE_SCRAPE_TRIGGER])
 }
