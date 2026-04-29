@@ -161,6 +161,13 @@ export async function handleExternalMessage(
   }
 }
 
+// triggerScrape は内部で複数の await を経るため、二つの TRIGGER_SCRAPE が
+// 同時に到達すると両方が「flag 不在」を見て 2 タブを開いてしまう race window
+// (storage check と tabs.create の間) がある。Service Worker は単一スレッドなので
+// 同期フラグで mutex 化すれば確実に防げる。SW dormant 時には消えるが、その時点で
+// 進行中処理も無いので問題ない。
+let _triggerScrapeInProgress = false
+
 async function triggerScrape(
   store: TriggerScrapeMessage['store'],
 ): Promise<ExternalMessageResponse> {
@@ -170,6 +177,26 @@ async function triggerScrape(
     return { success: false, error: '対応していないストアです', code: 'UNSUPPORTED_STORE' }
   }
 
+  // 同時押し防止: 別の triggerScrape が awaitable な処理中なら即拒否
+  if (_triggerScrapeInProgress) {
+    return {
+      success: false,
+      error: '取り込みが既に進行中です',
+      code: 'ALREADY_IN_PROGRESS',
+    }
+  }
+  _triggerScrapeInProgress = true
+  try {
+    return await triggerScrapeInner(store, config.triggerUrl)
+  } finally {
+    _triggerScrapeInProgress = false
+  }
+}
+
+async function triggerScrapeInner(
+  store: TriggerScrapeMessage['store'],
+  triggerUrl: string,
+): Promise<ExternalMessageResponse> {
   // 重複ガード: 既存 trigger flag が「TTL 内 + タブ生存」であれば作り直さない
   const existing = await getKindleScrapeTrigger()
   if (existing) {
@@ -204,7 +231,7 @@ async function triggerScrape(
   // onRemoved (ユーザーがタブを閉じる) もしくは TTL 切れによる自動 reset で
   // 次の trigger を受け付けられる。複雑化のコストに対して効果が乏しいため
   // sentinel 値による事前 set は行わない。
-  const tab = await chrome.tabs.create({ url: config.triggerUrl, active: false })
+  const tab = await chrome.tabs.create({ url: triggerUrl, active: false })
   if (typeof tab.id !== 'number') {
     return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
   }

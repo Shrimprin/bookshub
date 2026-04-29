@@ -732,6 +732,34 @@ describe('background', () => {
         expect(result).toMatchObject({ success: false })
         expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
       })
+
+      it('同時に 2 つの TRIGGER_SCRAPE が来ても tabs.create は 1 回しか呼ばれない (mutex)', async () => {
+        // tabs.create を意図的に遅延させて race window を露出させる
+        let resolveCreate: ((v: { id: number }) => void) | undefined
+        tabsCreate().mockImplementationOnce(
+          () =>
+            new Promise<{ id: number }>((resolve) => {
+              resolveCreate = resolve
+            }),
+        )
+        // 2 回目の create が万一呼ばれた場合に備えて 2 つ目のレスポンスも用意
+        tabsCreate().mockResolvedValueOnce({ id: 200 })
+
+        const p1 = handleExternalMessage({ type: 'TRIGGER_SCRAPE', store: 'kindle' }, allowedSender)
+        const p2 = handleExternalMessage({ type: 'TRIGGER_SCRAPE', store: 'kindle' }, allowedSender)
+
+        // p2 はまだ 1 つ目が処理中のため即座に ALREADY_IN_PROGRESS を返すはず
+        const r2 = await p2
+        expect(r2).toMatchObject({ success: false, code: 'ALREADY_IN_PROGRESS' })
+
+        // 1 つ目を完了させる
+        resolveCreate?.({ id: 100 })
+        const r1 = await p1
+        expect(r1).toEqual({ success: true })
+
+        // tabs.create は 1 回のみ
+        expect(chrome.tabs.create).toHaveBeenCalledTimes(1)
+      })
     })
   })
 
