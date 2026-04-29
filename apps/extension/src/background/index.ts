@@ -81,13 +81,22 @@ export async function handleMessage(
     case 'RELOAD_BOOKSHELF':
       await reloadBookshelfTabs()
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
-    case 'ABORT_SCRAPE':
-      await handleAbortScrape(message.reason)
+    case 'ABORT_SCRAPE': {
+      // isValidMessage は type フィールドのみ検証するため reason を runtime check する。
+      // 自拡張内のメッセージとはいえ、未知の値が ABORT_REASON_MESSAGES のキー欠落で
+      // undefined を lastSyncResult.error に書き込む事故を防ぐ。
+      const reason: AbortScrapeReason = VALID_ABORT_REASONS.has(message.reason as AbortScrapeReason)
+        ? (message.reason as AbortScrapeReason)
+        : 'UNEXPECTED_ERROR'
+      await handleAbortScrape(reason)
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
+    }
     default:
       return { success: false, error: '不明なメッセージタイプです', code: 'UNKNOWN_ERROR' }
   }
 }
+
+const VALID_ABORT_REASONS = new Set<AbortScrapeReason>(['NO_DOM', 'NO_BOOKS', 'UNEXPECTED_ERROR'])
 
 const ABORT_REASON_MESSAGES: Record<AbortScrapeReason, string> = {
   NO_DOM: 'Kindle ページの読み込みに時間がかかりました',
@@ -128,9 +137,13 @@ export async function handleExternalMessage(
   // 2. メッセージ形式バリデーション (Zod)
   const parsed = externalExtensionMessageSchema.safeParse(message)
   if (!parsed.success) {
+    // Zod の issue message を外部に返さない: 受理可能 type の列挙等を含み、
+    // 将来 externally_connectable を広げた場合の情報漏洩につながり得る。
+    // 詳細は SW console (chrome://extensions) で確認可能。
+    console.warn('[BookHub] external message rejected:', parsed.error.issues)
     return {
       success: false,
-      error: `不正なメッセージ形式: ${parsed.error.issues[0]?.message ?? 'unknown'}`,
+      error: '不正なメッセージ形式です',
       code: 'INVALID_MESSAGE',
     }
   }

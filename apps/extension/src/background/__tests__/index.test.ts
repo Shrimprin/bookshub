@@ -378,6 +378,15 @@ describe('background', () => {
         const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
         expect(result).toMatchObject({ status: 'error', errorCode: 'UNKNOWN_ERROR' })
       })
+
+      it('未知の reason 値は UNEXPECTED_ERROR にフォールバック (runtime 検証)', async () => {
+        await handleMessage({ type: 'ABORT_SCRAPE', reason: 'totally_made_up_reason' }, mockSender)
+        const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+        // ABORT_REASON_MESSAGES.UNEXPECTED_ERROR の文言にフォールバックする
+        expect(result.error).toMatch(/予期しないエラー/)
+        // 未定義キー lookup で undefined が書かれないことを保証
+        expect(result.error).not.toBeUndefined()
+      })
     })
 
     describe('全て重複の場合', () => {

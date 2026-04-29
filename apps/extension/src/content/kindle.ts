@@ -331,7 +331,11 @@ async function sendAndClear(books: ScrapeBook[]): Promise<void> {
     await notifyAbort('NO_BOOKS')
     return
   }
-  logParsedBooks(books)
+  // logParsedBooks は title/author を最大 5 件 console に出力する。
+  // ユーザー購入履歴は PII であり、本番ビルドではログに残さない。
+  if (__IS_DEV__) {
+    logParsedBooks(books)
+  }
   console.log(`${LOG_PREFIX} sending ${books.length} books to background...`)
   try {
     const response = await sendScrapedBooks(books)
