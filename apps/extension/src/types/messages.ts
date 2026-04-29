@@ -30,6 +30,8 @@ export type ExtensionMessage = SendScrapedBooksMessage | ReloadBookshelfMessage
 
 // --- 同期結果（storage 保存用） ---
 
+// status enum は既存値 (success/partial/error) を維持。エラー詳細は errorCode で分類する。
+// 拡張フィールドはすべて optional とし、旧データの後方互換を保つ。
 export interface SyncResult {
   status: 'success' | 'partial' | 'error'
   savedCount: number
@@ -37,6 +39,13 @@ export interface SyncResult {
   duplicates: ScrapeDuplicate[]
   error?: string
   timestamp: number
+  // observability / trigger 経由情報 (Phase 5 で書き込み開始)
+  errorCode?: ErrorCode
+  trigger?: 'auto' | 'web'
+  startedAt?: number
+  durationMs?: number
+  pagesScraped?: number
+  store?: 'kindle'
 }
 
 // --- Background → Content Script レスポンス型 ---
