@@ -155,6 +155,14 @@ async function triggerScrape(
 
   // 新規タブを background で開く。pageNumber=1 を含む URL なので、
   // kindle.ts 側の loadOrCreateSession が旧セッションを破棄して新規開始する。
+  //
+  // race window: tabs.create resolve から setKindleScrapeTrigger 完了までの数 ms 間、
+  // 仮に content script が main() を実行すると flag 未設定で skip してしまう。
+  // 実際には Amazon SPA の document_idle は数百 ms 以上かかるため発生確率は事実上ゼロ。
+  // 万一発生しても TRIGGER_TTL_MS 経過後に「タブ生存中だが flag 不在」状態になるので、
+  // onRemoved (ユーザーがタブを閉じる) もしくは TTL 切れによる自動 reset で
+  // 次の trigger を受け付けられる。複雑化のコストに対して効果が乏しいため
+  // sentinel 値による事前 set は行わない。
   const tab = await chrome.tabs.create({ url: config.triggerUrl, active: false })
   if (typeof tab.id !== 'number') {
     return { success: false, error: 'タブの作成に失敗しました', code: 'TAB_CREATE_FAILED' }
