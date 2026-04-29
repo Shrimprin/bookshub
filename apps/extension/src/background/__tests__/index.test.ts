@@ -254,6 +254,40 @@ describe('background', () => {
         )
       })
 
+      it('200 OK だが応答 JSON の shape が不正なら API_ERROR を返す (Zod 検証)', async () => {
+        // savedCount が string (number じゃない) → scrapeResponseSchema parse 失敗
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              savedCount: 'not-a-number',
+              duplicateCount: 0,
+              duplicates: [],
+            }),
+        })
+
+        const result = await handleMessage(
+          { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+          mockSender,
+        )
+        expect(result).toMatchObject({ success: false, code: 'API_ERROR' })
+      })
+
+      it('200 OK だが json() が throw したら API_ERROR を返す', async () => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.reject(new SyntaxError('invalid JSON')),
+        })
+
+        const result = await handleMessage(
+          { type: 'SEND_SCRAPED_BOOKS', books: testBooks } satisfies SendScrapedBooksMessage,
+          mockSender,
+        )
+        expect(result).toMatchObject({ success: false, code: 'API_ERROR' })
+      })
+
       it('ネットワークエラーの場合 NETWORK_ERROR を返す', async () => {
         mockFetch.mockRejectedValue(new TypeError('Failed to fetch'))
 

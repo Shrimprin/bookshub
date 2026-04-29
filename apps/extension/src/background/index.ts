@@ -1,4 +1,8 @@
-import { scrapePayloadSchema, externalExtensionMessageSchema } from '@bookhub/shared'
+import {
+  scrapePayloadSchema,
+  scrapeResponseSchema,
+  externalExtensionMessageSchema,
+} from '@bookhub/shared'
 import type { ScrapeResponse, ExternalMessageResponse, TriggerScrapeMessage } from '@bookhub/shared'
 import type {
   AbortScrapeReason,
@@ -408,9 +412,48 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
     return { success: false, error: errMsg, code: errorCode }
   }
 
-  const data = (await response.json()) as ScrapeResponse
+  // 5. レスポンス形式の実行時検証 (型キャストではなく Zod parse)。
+  //    自社 API への Bearer 認証付きリクエストとはいえ、API バージョンずれや
+  //    リバースプロキシ介在で予期しない shape が返ってきたとき savedCount/duplicates
+  //    が undefined のまま伝播するのを防ぐ。
+  let rawJson: unknown
+  try {
+    rawJson = await response.json()
+  } catch {
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'サーバーレスポンスの読み取りに失敗しました',
+      errorCode: 'API_ERROR',
+    })
+    return {
+      success: false,
+      error: 'サーバーレスポンスの読み取りに失敗しました',
+      code: 'API_ERROR',
+    }
+  }
+  const parsedResponse = scrapeResponseSchema.safeParse(rawJson)
+  if (!parsedResponse.success) {
+    console.warn('[BookHub] /api/scrape returned invalid shape:', parsedResponse.error.issues)
+    await cleanupAndRecordResult({
+      status: 'error',
+      savedCount: 0,
+      duplicateCount: 0,
+      duplicates: [],
+      error: 'サーバーレスポンスの形式が不正です',
+      errorCode: 'API_ERROR',
+    })
+    return {
+      success: false,
+      error: 'サーバーレスポンスの形式が不正です',
+      code: 'API_ERROR',
+    }
+  }
+  const data: ScrapeResponse = parsedResponse.data
 
-  // 5. 同期結果を保存 (cleanupAndRecordResult が tab を閉じ flag を clear する)
+  // 6. 同期結果を保存 (cleanupAndRecordResult が tab を閉じ flag を clear する)
   let status: SyncResult['status']
   if (data.savedCount > 0 && data.duplicateCount === 0) {
     status = 'success'
@@ -427,7 +470,7 @@ async function handleSendScrapedBooks(books: unknown[]): Promise<MessageResponse
     duplicates: data.duplicates,
   })
 
-  // 6. 本棚タブをリロード
+  // 7. 本棚タブをリロード
   await reloadBookshelfTabs()
 
   return { success: true, data }
