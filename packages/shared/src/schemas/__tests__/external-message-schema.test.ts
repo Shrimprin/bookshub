@@ -3,6 +3,7 @@ import {
   externalExtensionMessageSchema,
   setAccessTokenMessageSchema,
   clearAccessTokenMessageSchema,
+  triggerScrapeMessageSchema,
 } from '../external-message-schema'
 
 describe('setAccessTokenMessageSchema', () => {
@@ -47,6 +48,31 @@ describe('clearAccessTokenMessageSchema', () => {
   })
 })
 
+describe('triggerScrapeMessageSchema', () => {
+  it('正常な TRIGGER_SCRAPE (store=kindle) を受理する', () => {
+    const result = triggerScrapeMessageSchema.safeParse({
+      type: 'TRIGGER_SCRAPE',
+      store: 'kindle',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('未対応の store を拒否する', () => {
+    const result = triggerScrapeMessageSchema.safeParse({
+      type: 'TRIGGER_SCRAPE',
+      store: 'unknown',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('store が無い場合は拒否する', () => {
+    const result = triggerScrapeMessageSchema.safeParse({
+      type: 'TRIGGER_SCRAPE',
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('externalExtensionMessageSchema', () => {
   it('SET_ACCESS_TOKEN の discriminated union として機能する', () => {
     const result = externalExtensionMessageSchema.safeParse({
@@ -59,6 +85,14 @@ describe('externalExtensionMessageSchema', () => {
   it('CLEAR_ACCESS_TOKEN の discriminated union として機能する', () => {
     const result = externalExtensionMessageSchema.safeParse({
       type: 'CLEAR_ACCESS_TOKEN',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('TRIGGER_SCRAPE の discriminated union として機能する', () => {
+    const result = externalExtensionMessageSchema.safeParse({
+      type: 'TRIGGER_SCRAPE',
+      store: 'kindle',
     })
     expect(result.success).toBe(true)
   })
