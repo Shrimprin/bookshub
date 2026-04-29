@@ -1,5 +1,6 @@
 import {
   userBookIdSchema,
+  seriesIdSchema,
   registerBookSchema,
   updateUserBookSchema,
   getBooksQuerySchema,
@@ -53,6 +54,22 @@ describe('userBookIdSchema', () => {
     '無効な値 %j を拒否する',
     (value) => {
       expect(userBookIdSchema.safeParse(value).success).toBe(false)
+    },
+  )
+})
+
+// --- seriesIdSchema ---
+
+describe('seriesIdSchema', () => {
+  it('有効な UUID を受け入れる', () => {
+    const result = seriesIdSchema.safeParse('11111111-1111-1111-1111-111111111111')
+    expect(result.success).toBe(true)
+  })
+
+  it.each(['not-a-uuid', '', '123', '11111111-1111-1111-1111', null, undefined, 123])(
+    '無効な値 %j を拒否する',
+    (value) => {
+      expect(seriesIdSchema.safeParse(value).success).toBe(false)
     },
   )
 })

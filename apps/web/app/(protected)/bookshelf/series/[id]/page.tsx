@@ -4,6 +4,7 @@ import { seriesIdSchema } from '@bookhub/shared'
 import { createClient } from '@/lib/supabase/server'
 import { getSeriesDetail } from '@/lib/books/get-series-detail'
 import { BookGallery } from '@/features/bookshelf/book-gallery'
+import { EmptyState } from '@/features/bookshelf/empty-state'
 
 // 統一して force-dynamic (本棚と同方針: 拡張機能のスクレイプ後に最新データが見える要件)
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,9 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
           {detail.series.author} · {detail.volumes.length} 巻所持
         </p>
       </header>
-      <BookGallery books={detail.volumes} />
+      {/* getSeriesDetail が 0 件で null → notFound() 済のため通常 volumes は空にならないが、
+          TOCTOU (チェック後に最後の巻が削除された等) の保険として emptyFallback を渡す。 */}
+      <BookGallery books={detail.volumes} emptyFallback={<EmptyState variant="empty" />} />
     </main>
   )
 }

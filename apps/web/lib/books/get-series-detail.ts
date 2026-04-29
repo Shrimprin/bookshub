@@ -36,6 +36,9 @@ interface UserBookRow {
  * 指定 series の所持巻一覧 + シリーズメタを 1 query で取得する。
  *
  * - user_books → books → series を inner join で固定し、`user_id eq` + `series_id eq` でフィルタ
+ *   - `.eq('books.series_id', seriesId)` は PostgREST の embedded resource filter として
+ *     SQL 側 WHERE 句に変換され、`books!inner` と組み合わさって inner join filter になる
+ *     (get-user-books.ts の `books.is_adult` フィルタと同パターン・同セマンティクス)
  * - 0 件なら null を返す。呼出側で `notFound()` を呼ぶ前提
  *   - 存在しない seriesId / 他ユーザーの series (= 自分は所持していない) は同じ「0 件」
  *     になり情報リーク (IDOR) を回避する
@@ -60,7 +63,18 @@ export async function getSeriesDetail(
   const rows = (data ?? []) as unknown as UserBookRow[]
   if (rows.length === 0) return null
 
+  // `.eq('books.series_id', seriesId)` で絞っているため全行が同一シリーズを指す前提。
+  // 開発環境では誰かが series_id フィルタを外した時に sirent fail しないよう assertion で守る。
   const first = rows[0]!.books.series
+  if (process.env.NODE_ENV !== 'production') {
+    const inconsistent = rows.find((r) => r.books.series.id !== first.id)
+    if (inconsistent) {
+      throw new Error(
+        `getSeriesDetail invariant violated: rows contain mixed series_ids (${first.id} vs ${inconsistent.books.series.id}). ` +
+          'Did you remove the books.series_id filter?',
+      )
+    }
+  }
 
   const volumes: BookWithStore[] = rows.map((row) => ({
     id: row.books.id,

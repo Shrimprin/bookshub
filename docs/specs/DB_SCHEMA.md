@@ -89,7 +89,13 @@ CREATE TRIGGER on_auth_user_created
 
 ### インデックス
 
-`series_title_author_unique` (UNIQUE制約) が `(title, author)` B-tree 索引を兼ねるため追加インデックスなし。
+| インデックス                 | カラム                | 種別                 | 用途                                                               |
+| ---------------------------- | --------------------- | -------------------- | ------------------------------------------------------------------ |
+| `series_title_author_unique` | (title, author)       | UNIQUE B-tree (制約) | 同一シリーズ重複防止 + prefix 一致検索                             |
+| `idx_series_title_trgm`      | title (gin_trgm_ops)  | GIN (pg_trgm)        | `title ILIKE '%foo%'` の中間一致検索 (`/bookshelf` シリーズ検索用) |
+| `idx_series_author_trgm`     | author (gin_trgm_ops) | GIN (pg_trgm)        | `author ILIKE '%foo%'` の中間一致検索                              |
+
+**背景**: pg_trgm の GIN インデックスは ILIKE の中間一致 (`%foo%`) に対応するため、シリーズ件数が増加してもシリーズ検索のレイテンシを抑えられる。書き込みコストはやや増えるが、series の INSERT は scrape 時のみで低頻度のため許容。
 
 ### RLS ポリシー
 
@@ -211,6 +217,8 @@ CREATE TRIGGER user_books_updated_at
 
 ### 定義
 
+下記は要旨。`cover_thumbnail_url` と `stores` の correlated subquery 実装は省略しているため、完全な定義は migration ファイル `supabase/migrations/20260420000001_user_series_view.sql` を参照すること。
+
 ```sql
 CREATE OR REPLACE VIEW public.user_series_view
 WITH (security_invoker = on)
@@ -221,8 +229,8 @@ SELECT
   s.title,
   s.author,
   COUNT(DISTINCT b.id)::int AS volume_count,
-  ( /* 最小 volume_number で thumbnail_url が NOT NULL の最初の巻 */ ) AS cover_thumbnail_url,
-  ARRAY( /* DISTINCT + ORDER BY store でソート安定 */ ) AS stores,
+  ( /* 最小 volume_number で thumbnail_url が NOT NULL の最初の巻 — 詳細は migration 参照 */ ) AS cover_thumbnail_url,
+  ARRAY( /* DISTINCT + ORDER BY store でソート安定 — 詳細は migration 参照 */ ) AS stores,
   MAX(ub.created_at) AS last_added_at
 FROM public.user_books ub
 JOIN public.books   b ON b.id = ub.book_id
@@ -275,6 +283,7 @@ GRANT SELECT ON public.user_series_view TO authenticated;
 | `20260419000005` | `cleanup_post_parser_fix`      | ✓       | parser 修正後に流入した汚染 series 行を再正規化                      |
 | `20260419000006` | `fix_rpc_on_conflict_update`   | ✓       | `upsert_book_with_series` の series UPSERT を `DO NOTHING` に修正    |
 | `20260420000001` | `user_series_view`             | ✓       | `user_series_view` ビュー導入（シリーズ単位本棚の集約クエリ用）      |
+| `20260420000002` | `series_trgm_indexes`          | ✓       | `series.title` / `series.author` に pg_trgm GIN インデックス追加     |
 
 ---
 
