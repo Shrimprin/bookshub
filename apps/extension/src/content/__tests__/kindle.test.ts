@@ -10,36 +10,53 @@ vi.stubGlobal('__API_BASE_URL__', 'http://localhost:3000')
 // --- chrome API モック ---
 const mockSendMessage = vi.fn()
 const mockStorage = new Map<string, unknown>()
+const mockSessionStorage = new Map<string, unknown>()
+
+function makeStorageAreaMock(store: Map<string, unknown>) {
+  return {
+    get: vi.fn((keys: string[]) => {
+      const result: Record<string, unknown> = {}
+      for (const key of keys) {
+        const value = store.get(key)
+        if (value !== undefined) result[key] = value
+      }
+      return Promise.resolve(result)
+    }),
+    set: vi.fn((items: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(items)) {
+        store.set(key, value)
+      }
+      return Promise.resolve()
+    }),
+    remove: vi.fn((keys: string[]) => {
+      for (const key of keys) {
+        store.delete(key)
+      }
+      return Promise.resolve()
+    }),
+  }
+}
 
 vi.stubGlobal('chrome', {
   runtime: {
     sendMessage: mockSendMessage,
   },
   storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {}
-        for (const key of keys) {
-          const value = mockStorage.get(key)
-          if (value !== undefined) result[key] = value
-        }
-        return Promise.resolve(result)
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        for (const [key, value] of Object.entries(items)) {
-          mockStorage.set(key, value)
-        }
-        return Promise.resolve()
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          mockStorage.delete(key)
-        }
-        return Promise.resolve()
-      }),
-    },
+    local: makeStorageAreaMock(mockStorage),
+    session: makeStorageAreaMock(mockSessionStorage),
   },
 })
+
+// テストヘルパー: trigger flag をセット (Phase 3 で main() が gate されるため、
+// 既存の main()-driven テストはすべて事前に flag を立てる必要がある)
+function setActiveTrigger(): void {
+  mockSessionStorage.set('bookhub_kindle_trigger', {
+    tabId: 123,
+    startedAt: Date.now(),
+    source: 'web',
+    store: 'kindle',
+  })
+}
 
 // --- DOM ヘルパー ---
 
@@ -110,6 +127,7 @@ describe('kindle', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     mockStorage.clear()
+    mockSessionStorage.clear()
     document.body.innerHTML = ''
     // jsdom environment の場合 location をモック
     Object.defineProperty(window, 'location', {
@@ -259,6 +277,10 @@ describe('kindle', () => {
   })
 
   describe('main', () => {
+    beforeEach(() => {
+      setActiveTrigger()
+    })
+
     it('書籍を取得して sendScrapedBooks を呼ぶ', async () => {
       const successResponse: SendScrapedBooksResponse = {
         success: true,
@@ -316,7 +338,52 @@ describe('kindle', () => {
     })
   })
 
+  describe('main: trigger flag gate (Phase 3)', () => {
+    it('trigger flag が未設定なら何もしない (sendMessage 呼ばれない)', async () => {
+      // setActiveTrigger() を呼ばない
+      setupKindlePage([{ title: 'テスト 1巻', author: 'テスト作者' }])
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+
+    it('trigger flag が TTL 超過 (10 分以上前) なら早期 return + flag clear', async () => {
+      const elevenMinutesAgo = Date.now() - 11 * 60 * 1000
+      mockSessionStorage.set('bookhub_kindle_trigger', {
+        tabId: 1,
+        startedAt: elevenMinutesAgo,
+        source: 'web',
+        store: 'kindle',
+      })
+      setupKindlePage([{ title: 'テスト 1巻', author: 'テスト作者' }])
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+      // 期限切れ flag は安全のためクリアされる
+      expect(mockSessionStorage.has('bookhub_kindle_trigger')).toBe(false)
+    })
+
+    it('trigger flag が新鮮なら従来通り main() が走る', async () => {
+      setActiveTrigger()
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        data: { savedCount: 1, duplicateCount: 0, duplicates: [] },
+      } satisfies SendScrapedBooksResponse)
+      setupKindlePage([{ title: 'テスト 1巻', author: 'テスト作者' }])
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalled()
+    })
+  })
+
   describe('main: ページネーション', () => {
+    beforeEach(() => {
+      setActiveTrigger()
+    })
+
     function addPageLink(pageNum: number): void {
       const link = document.createElement('a')
       link.textContent = String(pageNum)

@@ -12,9 +12,21 @@ import {
   shouldStopForSafety,
   type ScrapeSession,
 } from './shared/scrape-session.js'
-import { clearScrapeSession, getScrapeSession, setScrapeSession } from '../utils/storage.js'
+import {
+  clearKindleScrapeTrigger,
+  clearScrapeSession,
+  getKindleScrapeTrigger,
+  getScrapeSession,
+  setScrapeSession,
+} from '../utils/storage.js'
 
 const LOG_PREFIX = '[BookHub/Kindle]'
+
+// Web 本棚から「Kindle から取り込み」ボタンが押された後、
+// content script の自動実行を許可する有効期限。Background が flag をセットしてから
+// 10 分以内に main() が走らない場合は、何らかの異常 (極端に重い読み込み・タブ放置等)
+// と判定して安全に no-op で抜ける。
+const TRIGGER_TTL_MS = 10 * 60 * 1000
 
 const KINDLE_CONTENT_URL_PATTERN =
   'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/'
@@ -345,6 +357,19 @@ export async function main(): Promise<void> {
 
   if (!isKindleContentPage()) {
     console.log(`${LOG_PREFIX} not a Kindle content list page, skipping`)
+    return
+  }
+
+  // Web 本棚からの明示的トリガーが無ければ何もしない (自動スクレイプ廃止)。
+  // ユーザーが Kindle ページを単に閲覧したいだけのケースを尊重する。
+  const trigger = await getKindleScrapeTrigger()
+  if (!trigger) {
+    console.log(`${LOG_PREFIX} no active trigger, skipping (manual visit)`)
+    return
+  }
+  if (Date.now() - trigger.startedAt > TRIGGER_TTL_MS) {
+    console.warn(`${LOG_PREFIX} stale trigger (>${TRIGGER_TTL_MS}ms old), clearing`)
+    await clearKindleScrapeTrigger()
     return
   }
 
