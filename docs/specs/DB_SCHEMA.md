@@ -10,9 +10,10 @@ BookHub の Supabase PostgreSQL スキーマ定義。全テーブルは Row Leve
 2. [series](#series-シリーズマスタ)
 3. [books](#books-書籍マスタ)
 4. [user_books](#user_books-ユーザー所持情報)
-5. [Migration History](#migration-history)
-6. [Row Level Security (RLS)](#row-level-security)
-7. [Query Examples](#query-examples)
+5. [user_series_view](#user_series_viewシリーズ集約ビュー)
+6. [Migration History](#migration-history)
+7. [Row Level Security (RLS)](#row-level-security)
+8. [Query Examples](#query-examples)
 
 ---
 
@@ -200,6 +201,63 @@ CREATE TRIGGER user_books_updated_at
 
 ---
 
+## user_series_view（シリーズ集約ビュー）
+
+`/bookshelf` のシリーズ一覧表示用のビュー。`user_books → books → series` を JOIN し、ユーザー × シリーズ単位で集約する。
+
+### 背景
+
+シリーズ単位の本棚 UI（Issue #33）で「最小巻表紙 + 巻数バッジ + 所有ストア集合」を `count: 'exact'` でページング可能な形で取得するために導入。アプリ層 (JS) で集約する案も検討したが、行数上限による silently truncate のリスクがあるため view を採用。
+
+### 定義
+
+```sql
+CREATE OR REPLACE VIEW public.user_series_view
+WITH (security_invoker = on)
+AS
+SELECT
+  ub.user_id,
+  s.id AS series_id,
+  s.title,
+  s.author,
+  COUNT(DISTINCT b.id)::int AS volume_count,
+  ( /* 最小 volume_number で thumbnail_url が NOT NULL の最初の巻 */ ) AS cover_thumbnail_url,
+  ARRAY( /* DISTINCT + ORDER BY store でソート安定 */ ) AS stores,
+  MAX(ub.created_at) AS last_added_at
+FROM public.user_books ub
+JOIN public.books   b ON b.id = ub.book_id
+JOIN public.series  s ON s.id = b.series_id
+GROUP BY ub.user_id, s.id, s.title, s.author;
+
+GRANT SELECT ON public.user_series_view TO authenticated;
+```
+
+### カラム
+
+| カラム                | 型           | 説明                                                                                |
+| --------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| `user_id`             | uuid         | 所有ユーザー (`user_books.user_id` 由来)                                            |
+| `series_id`           | uuid         | シリーズ ID (`series.id`)                                                           |
+| `title`               | text         | シリーズタイトル                                                                    |
+| `author`              | text         | シリーズ著者                                                                        |
+| `volume_count`        | int          | ユーザー所有の distinct book 数                                                     |
+| `cover_thumbnail_url` | text \| null | 最小 `volume_number` で `thumbnail_url IS NOT NULL` の巻のサムネイル。無ければ null |
+| `stores`              | text[]       | 所有 user_books の distinct ストア集合 (sort 済)                                    |
+| `last_added_at`       | timestamptz  | `MAX(user_books.created_at)`。最近追加順ソートのための予備                          |
+
+### セキュリティ
+
+- `WITH (security_invoker = on)` 指定により、view 経由 SELECT には呼出ユーザーの RLS が適用される
+- 内部の `user_books` テーブルが `auth.uid() = user_id` ポリシーを持つため、自分の行のみが集約に含まれる
+- アプリ層 (PostgREST) でも defense in depth として `.eq('user_id', userId)` を明示する規約
+
+### 用途
+
+- `apps/web/lib/books/get-user-series.ts` から `from('user_series_view').select(...)` で利用
+- ILIKE 検索 (`title.ilike` / `author.ilike`) は view 列に直接適用可能
+
+---
+
 ## Migration History
 
 | Version          | Name                           | Applied | 説明                                                                 |
@@ -214,6 +272,9 @@ CREATE TRIGGER user_books_updated_at
 | `20260419000002` | `upsert_book_with_series_rpc`  | ✓       | `upsert_book_with_series` RPC (series + books を atomic に登録)      |
 | `20260419000003` | `backfill_parser_fix`          | ✓       | parser 相当 SQL で既存 books を再解析、series 再バックフィル         |
 | `20260419000004` | `drop_books_title_author`      | ✓       | `books.title` / `books.author` を DROP (series 正規化完了)           |
+| `20260419000005` | `cleanup_post_parser_fix`      | ✓       | parser 修正後に流入した汚染 series 行を再正規化                      |
+| `20260419000006` | `fix_rpc_on_conflict_update`   | ✓       | `upsert_book_with_series` の series UPSERT を `DO NOTHING` に修正    |
+| `20260420000001` | `user_series_view`             | ✓       | `user_series_view` ビュー導入（シリーズ単位本棚の集約クエリ用）      |
 
 ---
 
@@ -252,6 +313,13 @@ CREATE TRIGGER user_books_updated_at
 │  - INSERT: auth.uid() = user_id   （自分のみ）              │
 │  - UPDATE: auth.uid() = user_id   （自分のみ）              │
 │  - DELETE: auth.uid() = user_id   （自分のみ）              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                  user_series_view (VIEW)                     │
+│  - security_invoker = on                                     │
+│  - 内部の user_books の RLS が呼出ユーザーに対して効く        │
+│  - GRANT SELECT TO authenticated                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -292,6 +360,34 @@ JOIN series s ON s.id = b.series_id
 WHERE ub.user_id = $1
 GROUP BY s.id, s.title, s.author
 ORDER BY s.title;
+```
+
+### シリーズ単位本棚（`user_series_view` 経由・PostgREST から利用）
+
+`/bookshelf` (Issue #33) で `count: 'exact'` ページング + ILIKE 検索を 1 query で。
+
+```sql
+-- raw SQL 等価
+SELECT series_id, title, author, volume_count, cover_thumbnail_url, stores, last_added_at
+FROM public.user_series_view
+WHERE user_id = $1
+  AND (title ILIKE $2 OR author ILIKE $2)  -- $2 例: '%ワンピ%'
+ORDER BY title
+LIMIT $3 OFFSET $4;
+```
+
+PostgREST 経由:
+
+```ts
+supabase
+  .from('user_series_view')
+  .select('series_id, title, author, volume_count, cover_thumbnail_url, stores, last_added_at', {
+    count: 'exact',
+  })
+  .eq('user_id', userId)
+  .or(`title.ilike.${pattern},author.ilike.${pattern}`)
+  .order('title')
+  .range(offset, offset + limit - 1)
 ```
 
 ### 二度買い防止チェック
