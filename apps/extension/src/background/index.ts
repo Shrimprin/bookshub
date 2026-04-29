@@ -1,12 +1,31 @@
 import { scrapePayloadSchema, externalExtensionMessageSchema } from '@bookhub/shared'
-import type { ScrapeResponse, ExternalMessageResponse } from '@bookhub/shared'
+import type { ScrapeResponse, ExternalMessageResponse, TriggerScrapeMessage } from '@bookhub/shared'
 import type { ExtensionMessage, MessageResponse, SyncResult } from '../types/messages.js'
 import {
   getAccessToken,
   setAccessToken,
   removeAccessToken,
   setLastSyncResult,
+  getKindleScrapeTrigger,
+  setKindleScrapeTrigger,
+  clearKindleScrapeTrigger,
 } from '../utils/storage.js'
+
+// Web 本棚から trigger を受け付けたとき、開くべき URL とコンテンツスクリプトの match パターン。
+// 将来 'dmm' 等を追加する場合はこの registry にエントリを足し、TriggerScrapeMessage の
+// store enum を拡張する。pageNumber=1 を URL に含めることで、kindle.ts 側の
+// loadOrCreateSession の「ページ 1 で既存セッションを破棄」分岐に乗せる。
+const STORE_REGISTRY = {
+  kindle: {
+    triggerUrl:
+      'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=1',
+  },
+} as const satisfies Record<TriggerScrapeMessage['store'], { triggerUrl: string }>
+
+// trigger flag が立ってから、main() のスクレイプ完了 / クリーンアップが走るまでの安全網。
+// Service Worker 再起動・タブ閉じ・onRemoved 取りこぼし等で flag が孤児化しても、
+// この時間を超えれば次回 trigger を受け付ける。
+const TRIGGER_TTL_MS = 10 * 60 * 1000
 
 // --- Service Worker 初期化 ---
 
@@ -82,7 +101,55 @@ export async function handleExternalMessage(
     case 'CLEAR_ACCESS_TOKEN':
       await removeAccessToken()
       return { success: true }
+    case 'TRIGGER_SCRAPE':
+      return await triggerScrape(parsed.data.store)
   }
+}
+
+async function triggerScrape(
+  store: TriggerScrapeMessage['store'],
+): Promise<ExternalMessageResponse> {
+  const config = STORE_REGISTRY[store]
+  if (!config) {
+    // Zod parse で弾かれるはずだが、防衛的に
+    return { success: false, error: '対応していないストアです' }
+  }
+
+  // 重複ガード: 既存 trigger flag が「TTL 内 + タブ生存」であれば作り直さない
+  const existing = await getKindleScrapeTrigger()
+  if (existing) {
+    const elapsed = Date.now() - existing.startedAt
+    let alive = false
+    if (elapsed < TRIGGER_TTL_MS) {
+      try {
+        await chrome.tabs.get(existing.tabId)
+        alive = true
+      } catch {
+        alive = false
+      }
+    }
+    if (alive) {
+      return { success: false, error: '取り込みが既に進行中です (already in progress)' }
+    }
+    // 孤児 flag を回収して新規作成へ
+    await clearKindleScrapeTrigger()
+  }
+
+  // 新規タブを background で開く。pageNumber=1 を含む URL なので、
+  // kindle.ts 側の loadOrCreateSession が旧セッションを破棄して新規開始する。
+  const tab = await chrome.tabs.create({ url: config.triggerUrl, active: false })
+  if (typeof tab.id !== 'number') {
+    return { success: false, error: 'タブの作成に失敗しました' }
+  }
+
+  await setKindleScrapeTrigger({
+    tabId: tab.id,
+    startedAt: Date.now(),
+    source: 'web',
+    store,
+  })
+
+  return { success: true }
 }
 
 // --- リスナーをトップレベルで登録 ---
@@ -100,6 +167,34 @@ chrome.runtime.onMessageExternal.addListener(
     return true // 非同期レスポンスを有効化
   },
 )
+
+// ユーザーが trigger 経由で開いたタブを手動で閉じた場合に、
+// 孤児 flag を残さないよう回収し、Web 側に状況を伝えるため lastSyncResult にエラーを書く。
+// service worker が dormant 復帰しても addListener はトップレベル登録なので再登録される。
+chrome.tabs.onRemoved.addListener((tabId: number) => {
+  void handleTabRemoved(tabId)
+})
+
+export async function handleTabRemoved(tabId: number): Promise<void> {
+  const trigger = await getKindleScrapeTrigger()
+  if (!trigger || trigger.tabId !== tabId) return
+
+  const now = Date.now()
+  await clearKindleScrapeTrigger()
+  await setLastSyncResult({
+    status: 'error',
+    savedCount: 0,
+    duplicateCount: 0,
+    duplicates: [],
+    error: 'タブが閉じられました',
+    errorCode: 'UNKNOWN_ERROR',
+    timestamp: now,
+    trigger: trigger.source,
+    startedAt: trigger.startedAt,
+    durationMs: now - trigger.startedAt,
+    store: trigger.store,
+  })
+}
 
 // --- スクレイピングデータ送信 ---
 

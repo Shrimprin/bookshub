@@ -5,6 +5,7 @@ import type { SendScrapedBooksMessage, ReloadBookshelfMessage } from '../../type
 // --- chrome API モック ---
 
 const mockStorageData = new Map<string, unknown>()
+const mockSessionData = new Map<string, unknown>()
 
 const mockTabs = [
   { id: 1, url: 'http://localhost:3000/bookshelf' },
@@ -12,6 +13,34 @@ const mockTabs = [
 ]
 
 const EXTENSION_ID = 'test-extension-id'
+
+// onRemoved リスナーをキャプチャして手動発火できるようにする
+let capturedOnRemoved: ((tabId: number) => unknown) | undefined
+
+function makeStorageAreaMock(store: Map<string, unknown>) {
+  return {
+    get: vi.fn((keys: string[]) => {
+      const result: Record<string, unknown> = {}
+      for (const key of keys) {
+        const value = store.get(key)
+        if (value !== undefined) result[key] = value
+      }
+      return Promise.resolve(result)
+    }),
+    set: vi.fn((items: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(items)) {
+        store.set(key, value)
+      }
+      return Promise.resolve()
+    }),
+    remove: vi.fn((keys: string[]) => {
+      for (const key of keys) {
+        store.delete(key)
+      }
+      return Promise.resolve()
+    }),
+  }
+}
 
 vi.stubGlobal('chrome', {
   runtime: {
@@ -22,28 +51,8 @@ vi.stubGlobal('chrome', {
     lastError: null,
   },
   storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {}
-        for (const key of keys) {
-          const value = mockStorageData.get(key)
-          if (value !== undefined) result[key] = value
-        }
-        return Promise.resolve(result)
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        for (const [key, value] of Object.entries(items)) {
-          mockStorageData.set(key, value)
-        }
-        return Promise.resolve()
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          mockStorageData.delete(key)
-        }
-        return Promise.resolve()
-      }),
-    },
+    local: makeStorageAreaMock(mockStorageData),
+    session: makeStorageAreaMock(mockSessionData),
   },
   tabs: {
     query: vi.fn((queryInfo: { url: string }) => {
@@ -54,6 +63,14 @@ vi.stubGlobal('chrome', {
       return Promise.resolve([])
     }),
     reload: vi.fn().mockResolvedValue(undefined),
+    create: vi.fn(),
+    get: vi.fn(),
+    remove: vi.fn().mockResolvedValue(undefined),
+    onRemoved: {
+      addListener: vi.fn((cb: (tabId: number) => unknown) => {
+        capturedOnRemoved = cb
+      }),
+    },
   },
 })
 
@@ -73,6 +90,7 @@ describe('background', () => {
     message: unknown,
     sender: chrome.runtime.MessageSender,
   ) => Promise<unknown>
+  let handleTabRemoved: (tabId: number) => Promise<void>
 
   const testBooks: ScrapeBook[] = [
     {
@@ -89,6 +107,9 @@ describe('background', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     mockStorageData.clear()
+    mockSessionData.clear()
+    // capturedOnRemoved はリセットしない: vitest のモジュールキャッシュにより
+    // re-import では addListener が再呼び出しされず、最初の import で捕えた参照を維持する。
     mockStorageData.set('bookhub_access_token', 'test-token')
 
     // background/index.ts を import するとリスナーが登録される
@@ -96,6 +117,7 @@ describe('background', () => {
     const bg = await import('../index.js')
     handleMessage = bg.handleMessage
     handleExternalMessage = bg.handleExternalMessage
+    handleTabRemoved = bg.handleTabRemoved
   })
 
   describe('handleMessage', () => {
@@ -517,6 +539,194 @@ describe('background', () => {
         const result = await handleExternalMessage({ type: 'CLEAR_ACCESS_TOKEN' }, allowedSender)
         expect(result).toEqual({ success: true })
       })
+    })
+
+    describe('TRIGGER_SCRAPE', () => {
+      const tabsCreate = (): ReturnType<typeof vi.fn> =>
+        chrome.tabs.create as ReturnType<typeof vi.fn>
+      const tabsGet = (): ReturnType<typeof vi.fn> => chrome.tabs.get as ReturnType<typeof vi.fn>
+
+      it('許可 origin から TRIGGER_SCRAPE で新規タブを active:false で開く', async () => {
+        tabsCreate().mockResolvedValue({ id: 99 })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toEqual({ success: true })
+        expect(chrome.tabs.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            active: false,
+            url: expect.stringContaining('pageNumber=1'),
+          }),
+        )
+        // session storage に flag が書かれる
+        const stored = mockSessionData.get('bookhub_kindle_trigger') as
+          | { tabId: number; source: string; store: string }
+          | undefined
+        expect(stored?.tabId).toBe(99)
+        expect(stored?.source).toBe('web')
+        expect(stored?.store).toBe('kindle')
+      })
+
+      it('未許可 origin からの TRIGGER_SCRAPE は拒否する', async () => {
+        tabsCreate().mockResolvedValue({ id: 99 })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          { origin: 'https://evil.example.com', id: 'evil-id' },
+        )
+
+        expect(result).toMatchObject({ success: false })
+        expect(chrome.tabs.create).not.toHaveBeenCalled()
+        expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      })
+
+      it('flag 既存 + tab 生存中なら already_in_progress を返し create しない', async () => {
+        mockSessionData.set('bookhub_kindle_trigger', {
+          tabId: 42,
+          startedAt: Date.now(),
+          source: 'web',
+          store: 'kindle',
+        })
+        tabsGet().mockResolvedValue({ id: 42 }) // 生存
+        tabsCreate().mockResolvedValue({ id: 99 })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toMatchObject({
+          success: false,
+          error: expect.stringMatching(/in.progress/i),
+        })
+        expect(chrome.tabs.create).not.toHaveBeenCalled()
+        // flag は変更されない
+        const stored = mockSessionData.get('bookhub_kindle_trigger') as { tabId: number }
+        expect(stored.tabId).toBe(42)
+      })
+
+      it('flag 既存 + tab 不在なら古い flag を clear して新規 tab 作成', async () => {
+        mockSessionData.set('bookhub_kindle_trigger', {
+          tabId: 42,
+          startedAt: Date.now(),
+          source: 'web',
+          store: 'kindle',
+        })
+        tabsGet().mockRejectedValue(new Error('No tab with id: 42'))
+        tabsCreate().mockResolvedValue({ id: 99 })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toEqual({ success: true })
+        expect(chrome.tabs.create).toHaveBeenCalled()
+        const stored = mockSessionData.get('bookhub_kindle_trigger') as { tabId: number }
+        expect(stored.tabId).toBe(99)
+      })
+
+      it('flag 既存 + TTL (10分) 超過なら新規 tab を作る', async () => {
+        const elevenMinutesAgo = Date.now() - 11 * 60 * 1000
+        mockSessionData.set('bookhub_kindle_trigger', {
+          tabId: 42,
+          startedAt: elevenMinutesAgo,
+          source: 'web',
+          store: 'kindle',
+        })
+        // tabs.get は呼ばれず、TTL 判定だけで stale と扱う想定 (実装は tabs.get を skip しない場合もあり)
+        tabsGet().mockResolvedValue({ id: 42 })
+        tabsCreate().mockResolvedValue({ id: 99 })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toEqual({ success: true })
+        expect(chrome.tabs.create).toHaveBeenCalled()
+        const stored = mockSessionData.get('bookhub_kindle_trigger') as { tabId: number }
+        expect(stored.tabId).toBe(99)
+      })
+
+      it('未対応 store は misconfigured エラー (Zod parse 失敗で拒否)', async () => {
+        // Zod schema レベルで弾かれる
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'rakuten' },
+          allowedSender,
+        )
+
+        expect(result).toMatchObject({ success: false })
+        expect(chrome.tabs.create).not.toHaveBeenCalled()
+      })
+
+      it('chrome.tabs.create が tab.id を返さなければエラーを返し flag をセットしない', async () => {
+        tabsCreate().mockResolvedValue({ id: undefined })
+
+        const result = await handleExternalMessage(
+          { type: 'TRIGGER_SCRAPE', store: 'kindle' },
+          allowedSender,
+        )
+
+        expect(result).toMatchObject({ success: false })
+        expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      })
+    })
+  })
+
+  describe('chrome.tabs.onRemoved listener (handleTabRemoved)', () => {
+    it('リスナーがトップレベルで登録される', () => {
+      // 最初の import 時に addListener が呼ばれて capturedOnRemoved がセットされる。
+      // beforeEach の clearAllMocks で call count はリセットされるが、登録済みリスナーは
+      // 別変数 (capturedOnRemoved) に退避しているので存在で検証する。
+      expect(capturedOnRemoved).toBeDefined()
+    })
+
+    it('該当 tabId が閉じられると flag を clear し lastSyncResult にエラーを書く', async () => {
+      const startedAt = Date.now() - 5000
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: 77,
+        startedAt,
+        source: 'web',
+        store: 'kindle',
+      })
+
+      await handleTabRemoved(77)
+
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+      const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+      expect(result).toMatchObject({
+        status: 'error',
+        errorCode: 'UNKNOWN_ERROR',
+        trigger: 'web',
+        store: 'kindle',
+      })
+      // duration は記録されている
+      expect(result.durationMs).toBeGreaterThanOrEqual(0)
+    })
+
+    it('別の tabId が閉じられたときは何もしない', async () => {
+      mockSessionData.set('bookhub_kindle_trigger', {
+        tabId: 77,
+        startedAt: Date.now(),
+        source: 'web',
+        store: 'kindle',
+      })
+
+      await handleTabRemoved(99)
+
+      // flag は維持される
+      expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(true)
+      // lastSyncResult は書かれない
+      expect(mockStorageData.get('bookhub_last_sync_result')).toBeUndefined()
+    })
+
+    it('flag が無い状態で onRemoved が来ても何も起きない', async () => {
+      await handleTabRemoved(123)
+      expect(mockStorageData.get('bookhub_last_sync_result')).toBeUndefined()
     })
   })
 })
