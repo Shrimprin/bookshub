@@ -61,6 +61,7 @@ MVP対象外（フェーズ2以降）:
 - `docs/specs/sequence_diagrams.md` — シーケンス図（認証・スクレイピング・本棚表示・手動登録）
 - `docs/specs/DB_SCHEMA.md` — データベーススキーマ定義(テーブル・RLS ポリシー)
 - `docs/specs/openapi.yaml` — API 仕様書（OpenAPI 3.1.0）
+- `docs/specs/design_system.md` — デザインシステム（カラートークン・タイポグラフィ・variant・ガードレール）
 - `docs/guides/CONTRIBUTING.md` — 開発環境セットアップ・コマンドリファレンス・テストガイド・PR チェックリスト
 - Cloudflare Pages Edge RuntimeはNode.js APIの一部が使用不可。`@opennextjs/cloudflare`の制約に注意。
 - 成人向けコンテンツと一般向けコンテンツは本棚を分離・隠蔽可能にする設計が必要。
