@@ -79,9 +79,13 @@ cp .env.example apps/web/.env.local
 
 ### packages/shared
 
-| コマンド                              | 説明                     |
-| ------------------------------------- | ------------------------ |
-| `pnpm --filter @bookhub/shared build` | 型定義・スキーマをビルド |
+| コマンド                                      | 説明                                          |
+| --------------------------------------------- | --------------------------------------------- |
+| `pnpm --filter @bookhub/shared build`         | 型定義・スキーマ・Parser をビルド             |
+| `pnpm --filter @bookhub/shared dev`           | TypeScript の watch モード                    |
+| `pnpm --filter @bookhub/shared test`          | テスト実行（Zod スキーマ・Parser・deep-link） |
+| `pnpm --filter @bookhub/shared test:watch`    | テストをウォッチモードで実行                  |
+| `pnpm --filter @bookhub/shared test:coverage` | テストカバレッジレポート生成                  |
 
 ## 環境変数リファレンス
 
@@ -225,14 +229,15 @@ pnpm --filter extension test:coverage
   - タイムアウト処理（`waitForElement()`）
   - Service Worker への送信
 
-- **Parser** (`src/content/shared/__tests__/parser.test.ts`):
-  - 巻数抽出（複数パターン: 「第1巻」「1巻」「(1)」「Vol.1」等）
-  - シリーズタイトル正規化（巻数表記・修飾語の除去）
-  - URL バリデーション
-
 - **Sender** (`src/content/shared/__tests__/sender.test.ts`):
   - Service Worker へのメッセージ送信
   - エラーハンドリング
+
+- **Scrape Session** (`src/content/shared/__tests__/scrape-session.test.ts`):
+  - 累積セッションのライフサイクル（開始・更新・完了・期限切れ）
+
+> Parser は `packages/shared/src/parser/__tests__/title-parser.test.ts` に移管済み。
+> Web 側の defensive parse 用にも同一実装が共有される（詳細は後述「Parser」節）。
 
 ## API エンドポイントリファレンス
 
@@ -438,6 +443,31 @@ Authorization: Bearer <token>
 
 レスポンス: 更新後の `BookWithStore` オブジェクト（200 OK）。存在しない場合は 404。
 
+### `GET /api/books/search` — 外部 API で書籍を検索
+
+楽天ブックス API（プライマリ）または Google Books API（フォールバック）を使って書籍を検索します。手動登録 UI のための候補取得用エンドポイント。
+
+#### リクエスト
+
+```text
+GET /api/books/search?q=ワンピース&page=1&limit=10
+Authorization: Bearer <token>
+```
+
+| パラメータ | 型     | 必須 | 説明                                       |
+| ---------- | ------ | ---- | ------------------------------------------ |
+| `q`        | string | Yes  | 検索クエリ（タイトル/著者名、1〜200 文字） |
+| `page`     | number | No   | ページ番号（デフォルト: 1、最大: 1000）    |
+| `limit`    | number | No   | 件数（デフォルト: 10、最大: 30）           |
+
+#### フォールバック戦略
+
+1. 楽天ブックス API で検索（`RAKUTEN_APP_ID` 設定時）
+2. 結果なし or エラー → Google Books API にフォールバック（`GOOGLE_BOOKS_API_KEY` 設定時）
+3. 両方失敗 → `source: "none"` + エラー情報を返す（200 レスポンス）
+
+詳細仕様は `docs/specs/openapi.yaml` の `/api/books/search` セクション参照。
+
 ### `DELETE /api/books/{id}` — 所持書籍の削除
 
 user_books レコードを削除します。books マスタは削除しません。`{id}` は user_books.id（UUID）。
@@ -489,11 +519,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 ```
 
-### Parser（src/content/shared/parser.ts）
+### Parser（packages/shared/src/parser/title-parser.ts）
 
-生データから共通の `ScrapeBook[]` 型に正規化：
+生データから共通の `ScrapeBook[]` 型に正規化。Chrome 拡張と Web の両方で利用するため
+`packages/shared` に配置している（拡張ビルドの旧バージョンが流入した汚染データを
+サーバ側で再 parse する defense in depth 用途）。
 
 ```typescript
+import { extractVolumeNumber, extractSeriesTitle, parseBooks } from '@bookhub/shared'
+
 // 巻数抽出
 extractVolumeNumber('ワンピース 107巻') // → 107
 
@@ -507,6 +541,8 @@ const books = parseBooks(rawBooks, 'kindle')
 対応パターン：
 
 - 「第1巻」「1巻」「(1)」「(01)」「Vol.1」「vol 1」
+- 末尾の Kindle 出版社ラベル除去：「(ジャンプコミックスDIGITAL)」「(BOOKS)」等
+- 全角英数字の正規化（`normalizeWidth`）
 - 修飾語除去：「特装版」「限定版」「通常版」
 
 ### ストレージ操作
