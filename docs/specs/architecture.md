@@ -296,6 +296,54 @@ API が 401 を返した場合、Background Service Worker は `chrome.storage.l
 - **Supabase を SC から直接 query**: 検索・ソート・ページング等のクエリ構築ロジックが API ルートと重複する。
 - **専用の `fetch-user-books-for-ssr.ts` ラッパを新設**: 既存の `getUserBooks()` が既に SC から直接呼べる純粋関数なので抽象の水増し。
 
+### 6.2 シリーズ単位本棚の集約戦略 (ADR)
+
+**決定:** `/bookshelf` (シリーズ一覧) のデータ取得は、**`user_series_view` を経由した単一 PostgREST クエリ**で実装する。アプリ層 (JS) での集約は採用しない。
+
+**背景:**
+
+- Issue #33 で `/bookshelf` をシリーズ単位の二階層 UI に再構成した
+- 当初案 (PostgREST 1 query で `user_books → books → series` を取得 → JS で `series_id` 集約 + `LIMIT 5000` 安全弁) は、行数上限を超えたシリーズが silently truncate されるリスクがあり、二度買い防止というコア価値と直接衝突する
+- `count: 'exact'` でシリーズ単位の正確なページングが取れないことも問題
+
+**採用した設計:**
+
+- `supabase/migrations/20260420000001_user_series_view.sql` で `user_series_view` を `WITH (security_invoker = on)` で定義
+- 集約 (`volume_count`, `cover_thumbnail_url`, `stores`, `last_added_at`) は SQL 側で完結する
+- `apps/web/lib/books/get-user-series.ts` から `from('user_series_view').select(..., { count: 'exact' }).eq('user_id', userId)` で叩く
+- ILIKE 検索は view の `title` / `author` 列に直接かかる (ネスト `referencedTable` の workaround 不要)
+- RLS は内部の `user_books` テーブル (`auth.uid() = user_id`) が view 経由で自動適用される。アプリ層でも `.eq('user_id', userId)` を明示する規約 (defense in depth)
+
+**却下した代替案:**
+
+- **JS 集約 (LIMIT 5000)**: silently truncate のリスク。データ欠落を UI から検出できず、二度買い防止に致命的
+- **RPC `get_user_series(...)`**: 集約の write side atomicity が要らない読み取り専用ユースケースには tool mismatch。view の方が宣言的
+
+**運用注意点:**
+
+- **`series` への非公開列追加時のリスク**: 現在 `series` テーブルの RLS は `auth.role() = 'authenticated'` で全件 SELECT 可能。`user_series_view` は `user_books` 経由で自分の所持シリーズだけが集約に入るため、現状は他ユーザーのシリーズメタが漏洩しない。将来 `series` に「ユーザー間で共有しない列」(例: 個人メモ・所持メタ等) を追加する場合は、view 定義の見直し (列を view から外す or 別テーブルに分離) が必要になる
+- **集約コスト**: `cover_thumbnail_url` / `stores` は correlated subquery 2 本で取得しており、シリーズ件数 × 2 のオーバーヘッドが発生する。`books(series_id)` + `user_books(user_id, book_id)` の既存インデックスがあるため MVP スケール (1 ユーザー数百シリーズ) では問題ない。`EXPLAIN ANALYZE` で 100 件取得が ms オーダーで完了することを確認済 (適用直後の dev 環境で ~0.7ms)
+- **ILIKE 検索のインデックス**: `20260420000002_series_trgm_indexes.sql` で `series.title` / `series.author` に pg_trgm GIN インデックスを追加済。シリーズ件数が小さい段階では planner が seq scan を選ぶが、件数増加時に自動的に index scan に切り替わる
+- **`stores text[]` カラムと TS `Store[]` の同期**: view の `stores` は `user_books.store` (`CHECK (store IN ('kindle', 'dmm', 'other'))`) の DISTINCT 集約。アプリ層では `as Store[]` でキャストし `packages/shared` の `storeSchema = z.enum([...])` と整合させている。**ストア種別を追加する際は (1) DB CHECK 制約 (2) `storeSchema` の enum (3) `STORE_LABEL` / `STORE_VARIANT` の 3 箇所を同時に更新する必要がある**
+
+### 6.3 SC ページの戻りリンクは searchParams を保持する
+
+**規約:** 詳細ページ (例: `/bookshelf/series/[id]`) の Breadcrumb / 戻りリンクは、遷移元の検索 state (`searchParams.q` など) を `?q=...` で復元できる形で組み立てる。
+
+**理由:**
+
+- 検索で絞り込んだ結果から詳細ページに入り、戻った時に検索 state が消えると UX が劣化する
+- ブラウザの戻るボタンでも履歴復元はできるが、明示的なリンクで戻る挙動も同等であるべき
+
+**実装パターン:**
+
+```tsx
+const backHref = q ? `/bookshelf?q=${encodeURIComponent(q)}` : '/bookshelf'
+<Link href={backHref}>本棚</Link>
+```
+
+将来の他ページ (例: 巻詳細・ストア絞り込み復元) も同方針で揃える。
+
 ---
 
 ## 7. Cloudflare Pages Edge Runtime の制約

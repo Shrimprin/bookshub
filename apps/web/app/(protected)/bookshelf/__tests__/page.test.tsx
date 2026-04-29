@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react'
-import type { GetBooksResponse, BookWithStore } from '@bookhub/shared'
+import type { GetUserSeriesResult, UserSeries } from '@/lib/books/get-user-series'
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
-vi.mock('@/lib/books/get-user-books', () => ({
-  getUserBooks: vi.fn(),
+vi.mock('@/lib/books/get-user-series', () => ({
+  getUserSeries: vi.fn(),
 }))
 
 // BookSearchForm は Client Component のため next/navigation を使う。
@@ -18,25 +18,20 @@ vi.mock('next/navigation', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
-import { getUserBooks } from '@/lib/books/get-user-books'
+import { getUserSeries } from '@/lib/books/get-user-series'
 import BookshelfPage from '../page'
 
 const mockUser = { id: 'user-123', email: 'test@example.com' }
 
-function makeBook(overrides: Partial<BookWithStore> = {}): BookWithStore {
+function makeSeries(overrides: Partial<UserSeries> = {}): UserSeries {
   return {
-    id: '11111111-1111-1111-1111-111111111111',
-    title: 'Title',
-    author: 'Author',
-    volumeNumber: 1,
-    thumbnailUrl: null,
-    isbn: null,
-    publishedAt: null,
-    isAdult: false,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    userBookId: '22222222-2222-2222-2222-222222222222',
-    store: 'kindle',
-    userBookCreatedAt: '2024-01-01T00:00:00.000Z',
+    seriesId: '11111111-1111-1111-1111-111111111111',
+    title: 'シリーズ',
+    author: '著者',
+    volumeCount: 10,
+    coverThumbnailUrl: null,
+    stores: ['kindle'],
+    lastAddedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
 }
@@ -62,93 +57,86 @@ describe('BookshelfPage', () => {
     setupAuth()
   })
 
-  it('getUserBooks の結果をギャラリーに描画する', async () => {
-    const books = [
-      makeBook({
-        userBookId: '00000000-0000-0000-0000-0000000000a1',
-        title: 'ワンピース',
-        volumeNumber: 105,
-      }),
-      makeBook({
-        userBookId: '00000000-0000-0000-0000-0000000000a2',
-        title: 'NARUTO',
-        volumeNumber: 72,
-        store: 'dmm',
-      }),
+  it('getUserSeries の結果をシリーズギャラリーに描画する', async () => {
+    const series = [
+      makeSeries({ seriesId: 's-1', title: 'ワンピース', author: '尾田栄一郎', volumeCount: 105 }),
+      makeSeries({ seriesId: 's-2', title: 'NARUTO', author: '岸本斉史', volumeCount: 72 }),
     ]
-    const response: GetBooksResponse = { books, total: 2, page: 1, limit: 100 }
-    vi.mocked(getUserBooks).mockResolvedValue(response)
+    const response: GetUserSeriesResult = { series, total: 2, page: 1, limit: 100 }
+    vi.mocked(getUserSeries).mockResolvedValue(response)
 
     await renderPage()
 
     expect(screen.getByRole('heading', { name: '本棚' })).toBeInTheDocument()
-    expect(screen.getByText('2 冊')).toBeInTheDocument()
-    expect(screen.getByText('ワンピース (105巻)')).toBeInTheDocument()
-    expect(screen.getByText('NARUTO (72巻)')).toBeInTheDocument()
+    expect(screen.getByText('2 シリーズ')).toBeInTheDocument()
+    expect(screen.getByText('ワンピース')).toBeInTheDocument()
+    expect(screen.getByText('NARUTO')).toBeInTheDocument()
+    expect(screen.getByText('105 巻所持')).toBeInTheDocument()
+    expect(screen.getByText('72 巻所持')).toBeInTheDocument()
   })
 
-  it('books が空のときは empty state を表示する', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('series が空のときは empty state を表示する', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage()
 
     expect(screen.getByText('蔵書がまだありません')).toBeInTheDocument()
   })
 
-  it('searchParams.q が 2 文字以上のとき getUserBooks に q を渡す', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('searchParams.q が 2 文字以上のとき getUserSeries に q を渡す', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage({ q: 'ワンピ' })
 
-    expect(getUserBooks).toHaveBeenCalledWith(
+    expect(getUserSeries).toHaveBeenCalledWith(
       expect.anything(),
       'user-123',
       expect.objectContaining({ q: 'ワンピ', page: 1, limit: 100 }),
     )
   })
 
-  it('searchParams.q が 1 文字のとき getUserBooks には q を渡さない', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('searchParams.q が 1 文字のとき getUserSeries には q を渡さない', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage({ q: 'ワ' })
 
-    const call = vi.mocked(getUserBooks).mock.calls[0]
+    const call = vi.mocked(getUserSeries).mock.calls[0]
     expect(call?.[2]).not.toHaveProperty('q')
     expect(call?.[2]).toEqual(expect.objectContaining({ page: 1, limit: 100 }))
   })
 
-  it('searchParams.q が空文字列のとき getUserBooks には q を渡さない', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('searchParams.q が空文字列のとき getUserSeries には q を渡さない', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage({ q: '' })
 
-    const call = vi.mocked(getUserBooks).mock.calls[0]
+    const call = vi.mocked(getUserSeries).mock.calls[0]
     expect(call?.[2]).not.toHaveProperty('q')
   })
 
-  it('searchParams.q が空白のみのとき getUserBooks には q を渡さない', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('searchParams.q が空白のみのとき getUserSeries には q を渡さない', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage({ q: '   ' })
 
-    const call = vi.mocked(getUserBooks).mock.calls[0]
+    const call = vi.mocked(getUserSeries).mock.calls[0]
     expect(call?.[2]).not.toHaveProperty('q')
   })
 
-  it('searchParams.q が 200 文字を超える場合は 200 文字に切り詰めて getUserBooks に渡す', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+  it('searchParams.q が 200 文字を超える場合は 200 文字に切り詰めて getUserSeries に渡す', async () => {
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     const longQ = 'あ'.repeat(500)
     await renderPage({ q: longQ })
 
-    const call = vi.mocked(getUserBooks).mock.calls[0]
+    const call = vi.mocked(getUserSeries).mock.calls[0]
     const passedQ = (call?.[2] as { q?: string }).q
     expect(passedQ?.length).toBe(200)
     expect(passedQ).toBe('あ'.repeat(200))
   })
 
   it('searchParams.q 2文字以上 & 結果 0 件のとき no-results を表示する', async () => {
-    vi.mocked(getUserBooks).mockResolvedValue({ books: [], total: 0, page: 1, limit: 100 })
+    vi.mocked(getUserSeries).mockResolvedValue({ series: [], total: 0, page: 1, limit: 100 })
 
     await renderPage({ q: 'ワンピ' })
 
