@@ -323,18 +323,27 @@ describe('kindle', () => {
       expect(mockSendMessage).not.toHaveBeenCalled()
     })
 
-    it('書籍が 0 件の場合は送信しない', async () => {
+    it('書籍が 0 件の場合は SEND_SCRAPED_BOOKS を呼ばず ABORT_SCRAPE を送る', async () => {
       // タイトル要素は存在するが、カード全体（著者要素を含む祖先）が見つからないケース。
-      // waitForElement がマッチする → scrapeKindleBooks が空配列を返す → 早期 return
+      // waitForElement がマッチする → scrapeKindleBooks が空配列を返す → ABORT_SCRAPE で中止
       const orphan = document.createElement('div')
       orphan.id = 'content-title-B000000000'
       orphan.className = 'digital_entity_title'
       // 著者要素なし → findBookCardRoot が null → スキップ
       document.body.appendChild(orphan)
+      mockSendMessage.mockResolvedValue({ success: true })
 
       await kindleModule.main()
 
-      expect(mockSendMessage).not.toHaveBeenCalled()
+      // SEND_SCRAPED_BOOKS は呼ばれず、ABORT_SCRAPE のみ
+      const sendBooksCalls = mockSendMessage.mock.calls.filter(
+        (call) => (call[0] as { type: string }).type === 'SEND_SCRAPED_BOOKS',
+      )
+      expect(sendBooksCalls).toHaveLength(0)
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'ABORT_SCRAPE',
+        reason: 'NO_BOOKS',
+      })
     })
   })
 
@@ -348,7 +357,7 @@ describe('kindle', () => {
       expect(mockSendMessage).not.toHaveBeenCalled()
     })
 
-    it('trigger flag が TTL 超過 (10 分以上前) なら早期 return + flag clear', async () => {
+    it('trigger flag が TTL 超過 (10 分以上前) なら ABORT_SCRAPE を送る', async () => {
       const elevenMinutesAgo = Date.now() - 11 * 60 * 1000
       mockSessionStorage.set('bookhub_kindle_trigger', {
         tabId: 1,
@@ -357,12 +366,15 @@ describe('kindle', () => {
         store: 'kindle',
       })
       setupKindlePage([{ title: 'テスト 1巻', author: 'テスト作者' }])
+      mockSendMessage.mockResolvedValue({ success: true })
 
       await kindleModule.main()
 
-      expect(mockSendMessage).not.toHaveBeenCalled()
-      // 期限切れ flag は安全のためクリアされる
-      expect(mockSessionStorage.has('bookhub_kindle_trigger')).toBe(false)
+      // SEND_SCRAPED_BOOKS は呼ばれず、ABORT_SCRAPE が送られる
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'ABORT_SCRAPE',
+        reason: 'UNEXPECTED_ERROR',
+      })
     })
 
     it('trigger flag が新鮮なら従来通り main() が走る', async () => {
@@ -376,6 +388,57 @@ describe('kindle', () => {
       await kindleModule.main()
 
       expect(mockSendMessage).toHaveBeenCalled()
+    })
+
+    it('waitForElement が DOM を見つけられず timeout したら ABORT_SCRAPE(NO_DOM) を送る', async () => {
+      setActiveTrigger()
+      document.body.innerHTML = '<div>no books rendered</div>'
+      mockSendMessage.mockResolvedValue({ success: true })
+
+      // _internals 経由で waitForElement を spy して即座に null を返す
+      const waitSpy = vi.spyOn(kindleModule._internals, 'waitForElement').mockResolvedValue(null)
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'ABORT_SCRAPE',
+        reason: 'NO_DOM',
+      })
+      waitSpy.mockRestore()
+    })
+
+    it('スクレイプ結果 0 件で sendAndClear が呼ばれた場合 ABORT_SCRAPE(NO_BOOKS) を送る', async () => {
+      setActiveTrigger()
+      // 既存セッションを準備し、現在ページで 0 件 (タイトルカード要素なし) → 最終ページ送信パスへ
+      mockStorage.set('bookhub_scrape_session_v1', {
+        startedAt: Date.now(),
+        originalUrl:
+          'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/',
+        lastPageScraped: 1,
+        books: [],
+        seenKeys: [],
+      })
+      window.location.href =
+        'https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksAll/dateDsc/?pageNumber=2'
+      // タイトルカードは存在するが author 要素が無い → scrapeKindleBooks が空配列を返す
+      const orphan = document.createElement('div')
+      orphan.id = 'content-title-B000000000'
+      orphan.className = 'digital_entity_title'
+      const heading = document.createElement('div')
+      heading.setAttribute('role', 'heading')
+      heading.textContent = '本'
+      orphan.appendChild(heading)
+      document.body.appendChild(orphan)
+
+      // 次ページリンクなし → 最終ページ扱い → sendAndClear に 0 件で入る
+      mockSendMessage.mockResolvedValue({ success: true })
+
+      await kindleModule.main()
+
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'ABORT_SCRAPE',
+        reason: 'NO_BOOKS',
+      })
     })
   })
 

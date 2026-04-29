@@ -13,7 +13,6 @@ import {
   type ScrapeSession,
 } from './shared/scrape-session.js'
 import {
-  clearKindleScrapeTrigger,
   clearScrapeSession,
   getKindleScrapeTrigger,
   getScrapeSession,
@@ -250,6 +249,11 @@ export const _internals = {
   navigateTo(url: string): void {
     window.location.href = url
   },
+  // waitForElement はテストで MutationObserver の 10 秒タイムアウトを待ちたくないため
+  // _internals 経由でラップして spy できるようにする。
+  waitForElement(selector: string, timeout?: number): Promise<Element | null> {
+    return waitForElement(selector, timeout)
+  },
 }
 
 function logParsedBooks(books: ScrapeBook[]): void {
@@ -320,8 +324,11 @@ async function loadOrCreateSession(
 
 async function sendAndClear(books: ScrapeBook[]): Promise<void> {
   if (books.length === 0) {
-    console.warn(`${LOG_PREFIX} 0 books to send, clearing session`)
+    console.warn(`${LOG_PREFIX} 0 books to send, clearing session and aborting`)
     await clearScrapeSession()
+    // trigger 経由の場合は flag/タブが残らないよう background にも通知する。
+    // 手動経由 (trigger 無し) のときは background 側で flag が無いので no-op となる。
+    await notifyAbort('NO_BOOKS')
     return
   }
   logParsedBooks(books)
@@ -363,16 +370,20 @@ export async function main(): Promise<void> {
     return
   }
   if (Date.now() - trigger.startedAt > TRIGGER_TTL_MS) {
-    console.warn(`${LOG_PREFIX} stale trigger (>${TRIGGER_TTL_MS}ms old), clearing`)
-    await clearKindleScrapeTrigger()
+    console.warn(`${LOG_PREFIX} stale trigger (>${TRIGGER_TTL_MS}ms old), aborting`)
+    // ABORT_SCRAPE で background 側にもタブ close + lastSyncResult 記録を任せる
+    // (clearKindleScrapeTrigger は handleAbortScrape → cleanupAndRecordResult で実行される)
+    await notifyAbort('UNEXPECTED_ERROR')
     return
   }
 
   console.log(`${LOG_PREFIX} waiting for book items to appear...`)
-  const found = await waitForElement(SELECTORS.titleCard, 10_000)
+  const found = await _internals.waitForElement(SELECTORS.titleCard, 10_000)
 
   if (!found) {
-    console.warn(`${LOG_PREFIX} no title cards appeared within 10s`)
+    console.warn(`${LOG_PREFIX} no title cards appeared within 10s, aborting`)
+    // trigger 経由の場合は flag/タブを残さず Web 側にエラーを伝えるために通知する。
+    await notifyAbort('NO_DOM')
     return
   }
 
@@ -447,6 +458,17 @@ export async function main(): Promise<void> {
   _internals.navigateTo(nextUrl)
 }
 
+async function notifyAbort(reason: 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR'): Promise<void> {
+  try {
+    // 一方向通知。background 側 cleanup の成否は問わない。
+    await chrome.runtime.sendMessage({ type: 'ABORT_SCRAPE', reason })
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} failed to notify ABORT_SCRAPE (${reason}):`, err)
+  }
+}
+
 main().catch((error) => {
   console.error(`${LOG_PREFIX} main() failed:`, error)
+  // 予期しない例外でも flag/タブを孤児化させない。await 不要 (top-level catch)。
+  void notifyAbort('UNEXPECTED_ERROR')
 })

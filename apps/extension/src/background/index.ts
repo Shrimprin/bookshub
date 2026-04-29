@@ -1,6 +1,11 @@
 import { scrapePayloadSchema, externalExtensionMessageSchema } from '@bookhub/shared'
 import type { ScrapeResponse, ExternalMessageResponse, TriggerScrapeMessage } from '@bookhub/shared'
-import type { ExtensionMessage, MessageResponse, SyncResult } from '../types/messages.js'
+import type {
+  AbortScrapeReason,
+  ExtensionMessage,
+  MessageResponse,
+  SyncResult,
+} from '../types/messages.js'
 import {
   getAccessToken,
   setAccessToken,
@@ -76,9 +81,32 @@ export async function handleMessage(
     case 'RELOAD_BOOKSHELF':
       await reloadBookshelfTabs()
       return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
+    case 'ABORT_SCRAPE':
+      await handleAbortScrape(message.reason)
+      return { success: true, data: { savedCount: 0, duplicateCount: 0, duplicates: [] } }
     default:
       return { success: false, error: '不明なメッセージタイプです', code: 'UNKNOWN_ERROR' }
   }
+}
+
+const ABORT_REASON_MESSAGES: Record<AbortScrapeReason, string> = {
+  NO_DOM: 'Kindle ページの読み込みに時間がかかりました',
+  NO_BOOKS: '取り込み対象の書籍が見つかりませんでした',
+  UNEXPECTED_ERROR: '予期しないエラーで取り込みを中止しました',
+}
+
+// content script から「完走できない」通知を受けたときの cleanup。
+// trigger 経由 / 手動経由いずれでも cleanupAndRecordResult が動作するため、
+// trigger flag が無くても呼んで OK (lastSyncResult のみ書かれる)。
+async function handleAbortScrape(reason: AbortScrapeReason): Promise<void> {
+  await cleanupAndRecordResult({
+    status: 'error',
+    savedCount: 0,
+    duplicateCount: 0,
+    duplicates: [],
+    error: ABORT_REASON_MESSAGES[reason],
+    errorCode: 'UNKNOWN_ERROR',
+  })
 }
 
 // --- 外部メッセージハンドラ (Web アプリからのトークン受け渡し) ---

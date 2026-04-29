@@ -27,7 +27,18 @@ export interface ReloadBookshelfMessage {
   type: 'RELOAD_BOOKSHELF'
 }
 
-export type ExtensionMessage = SendScrapedBooksMessage | ReloadBookshelfMessage
+// content script が「スクレイプを完走できない」と判定したときに送る通知。
+// background は cleanupAndRecordResult を呼んで trigger flag / タブを clean up し、
+// Web 側 (lastSyncResult) に経緯を記録する。
+// reason は技術的な切り分け用 (UI には ERROR_MESSAGE_BY_CODE 経由で localize される)。
+export type AbortScrapeReason = 'NO_DOM' | 'NO_BOOKS' | 'UNEXPECTED_ERROR'
+
+export interface AbortScrapeMessage {
+  type: 'ABORT_SCRAPE'
+  reason: AbortScrapeReason
+}
+
+export type ExtensionMessage = SendScrapedBooksMessage | ReloadBookshelfMessage | AbortScrapeMessage
 
 // --- 同期結果（storage 保存用） ---
 

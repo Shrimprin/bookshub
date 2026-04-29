@@ -341,6 +341,50 @@ describe('background', () => {
       })
     })
 
+    describe('ABORT_SCRAPE (Phase C)', () => {
+      it('trigger 経由で開いたタブが残っているとき tab を閉じ flag を clear する', async () => {
+        mockSessionData.set('bookhub_kindle_trigger', {
+          tabId: 77,
+          startedAt: Date.now() - 5000,
+          source: 'web',
+          store: 'kindle',
+        })
+
+        await handleMessage({ type: 'ABORT_SCRAPE', reason: 'NO_DOM' }, mockSender)
+
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(77)
+        expect(mockSessionData.has('bookhub_kindle_trigger')).toBe(false)
+        const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+        expect(result).toMatchObject({
+          status: 'error',
+          errorCode: 'UNKNOWN_ERROR',
+          trigger: 'web',
+          store: 'kindle',
+        })
+        expect(result.error).toMatch(/読み込み/)
+      })
+
+      it('reason ごとに lastSyncResult.error メッセージが分かれる', async () => {
+        mockSessionData.set('bookhub_kindle_trigger', {
+          tabId: 1,
+          startedAt: Date.now(),
+          source: 'web',
+          store: 'kindle',
+        })
+        await handleMessage({ type: 'ABORT_SCRAPE', reason: 'NO_BOOKS' }, mockSender)
+        const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+        expect(result.error).toMatch(/書籍が見つかりません/)
+      })
+
+      it('trigger flag が無くても lastSyncResult のみ書く (手動経路の安全策)', async () => {
+        // mockSessionData.set 無し
+        await handleMessage({ type: 'ABORT_SCRAPE', reason: 'UNEXPECTED_ERROR' }, mockSender)
+        expect(chrome.tabs.remove).not.toHaveBeenCalled()
+        const result = mockStorageData.get('bookhub_last_sync_result') as Record<string, unknown>
+        expect(result).toMatchObject({ status: 'error', errorCode: 'UNKNOWN_ERROR' })
+      })
+    })
+
     describe('全て重複の場合', () => {
       it('savedCount=0, duplicateCount>0 のとき status が partial になる', async () => {
         const apiResponse = {
