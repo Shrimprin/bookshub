@@ -5,6 +5,7 @@ import { SeriesGallery } from '@/features/bookshelf/series-gallery'
 import { BookSearchForm } from '@/features/bookshelf/book-search-form'
 import { EmptyState } from '@/features/bookshelf/empty-state'
 import { KindleImportButton } from '@/features/bookshelf/kindle-import-button'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 // TODO: revalidateTag + unstable_cache に移行する (docs/specs/architecture.md 参照)
 // 現状は拡張機能のスクレイプ後リロードで最新データが出れば要件充足のため force-dynamic で許容
@@ -50,7 +51,10 @@ export default async function BookshelfPage({ searchParams }: BookshelfPageProps
           <h1 className="text-2xl font-bold">本棚</h1>
           <p className="text-sm text-muted-foreground">{total} シリーズ</p>
         </div>
-        <KindleImportButton />
+        <div className="flex items-center gap-2">
+          <KindleImportButton />
+          <ThemeToggle />
+        </div>
       </header>
       <BookSearchForm defaultValue={trimmed} />
       <SeriesGallery
