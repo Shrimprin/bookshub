@@ -10,9 +10,10 @@ interface BookCardProps {
 export function BookCard({ book }: BookCardProps) {
   const titleWithVolume = book.volumeNumber ? `${book.title} (${book.volumeNumber}巻)` : book.title
   const storeUrl = buildStoreUrl(book.store, book.storeProductId)
+  const isLinked = Boolean(storeUrl)
 
   const cardBody = (
-    <Card className="overflow-hidden">
+    <Card interactive={isLinked} className="group/card overflow-hidden">
       <div className="relative aspect-[2/3] bg-muted">
         {book.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- Cloudflare Pages Edge では next/image 最適化が無効化されるため plain <img> を使用
@@ -20,17 +21,28 @@ export function BookCard({ book }: BookCardProps) {
             src={book.thumbnailUrl}
             alt={`${book.title} の書影`}
             loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover/card:scale-[1.03]"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             No Cover
           </div>
         )}
+        {book.volumeNumber !== null ? (
+          <span
+            className="absolute bottom-2 left-2 rounded-full bg-secondary/90 px-2 py-0.5 font-mono text-xs font-semibold text-secondary-foreground shadow-glow-secondary backdrop-blur-sm"
+            aria-hidden="true"
+          >
+            {book.volumeNumber}巻
+          </span>
+        ) : null}
         <StoreBadge store={book.store} className="absolute right-2 top-2" />
       </div>
       <div className="p-3">
-        <p className="line-clamp-2 text-sm font-medium" title={titleWithVolume}>
+        <p
+          className="line-clamp-2 text-sm font-medium transition-colors group-hover/card:text-primary"
+          title={titleWithVolume}
+        >
           {titleWithVolume}
         </p>
         <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{book.author}</p>
@@ -47,7 +59,7 @@ export function BookCard({ book }: BookCardProps) {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${titleWithVolume} を ${book.store === 'kindle' ? 'Kindle で読む' : 'DMM Books で開く'}`}
-      className="block rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       {cardBody}
     </a>
