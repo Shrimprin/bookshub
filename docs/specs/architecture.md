@@ -296,6 +296,47 @@ API が 401 を返した場合、Background Service Worker は `chrome.storage.l
 - **Supabase を SC から直接 query**: 検索・ソート・ページング等のクエリ構築ロジックが API ルートと重複する。
 - **専用の `fetch-user-books-for-ssr.ts` ラッパを新設**: 既存の `getUserBooks()` が既に SC から直接呼べる純粋関数なので抽象の水増し。
 
+### 6.2 シリーズ単位本棚の集約戦略 (ADR)
+
+**決定:** `/bookshelf` (シリーズ一覧) のデータ取得は、**`user_series_view` を経由した単一 PostgREST クエリ**で実装する。アプリ層 (JS) での集約は採用しない。
+
+**背景:**
+
+- Issue #33 で `/bookshelf` をシリーズ単位の二階層 UI に再構成した
+- 当初案 (PostgREST 1 query で `user_books → books → series` を取得 → JS で `series_id` 集約 + `LIMIT 5000` 安全弁) は、行数上限を超えたシリーズが silently truncate されるリスクがあり、二度買い防止というコア価値と直接衝突する
+- `count: 'exact'` でシリーズ単位の正確なページングが取れないことも問題
+
+**採用した設計:**
+
+- `supabase/migrations/20260420000001_user_series_view.sql` で `user_series_view` を `WITH (security_invoker = on)` で定義
+- 集約 (`volume_count`, `cover_thumbnail_url`, `stores`, `last_added_at`) は SQL 側で完結する
+- `apps/web/lib/books/get-user-series.ts` から `from('user_series_view').select(..., { count: 'exact' }).eq('user_id', userId)` で叩く
+- ILIKE 検索は view の `title` / `author` 列に直接かかる (ネスト `referencedTable` の workaround 不要)
+- RLS は内部の `user_books` テーブル (`auth.uid() = user_id`) が view 経由で自動適用される。アプリ層でも `.eq('user_id', userId)` を明示する規約 (defense in depth)
+
+**却下した代替案:**
+
+- **JS 集約 (LIMIT 5000)**: silently truncate のリスク。データ欠落を UI から検出できず、二度買い防止に致命的
+- **RPC `get_user_series(...)`**: 集約の write side atomicity が要らない読み取り専用ユースケースには tool mismatch。view の方が宣言的
+
+### 6.3 SC ページの戻りリンクは searchParams を保持する
+
+**規約:** 詳細ページ (例: `/bookshelf/series/[id]`) の Breadcrumb / 戻りリンクは、遷移元の検索 state (`searchParams.q` など) を `?q=...` で復元できる形で組み立てる。
+
+**理由:**
+
+- 検索で絞り込んだ結果から詳細ページに入り、戻った時に検索 state が消えると UX が劣化する
+- ブラウザの戻るボタンでも履歴復元はできるが、明示的なリンクで戻る挙動も同等であるべき
+
+**実装パターン:**
+
+```tsx
+const backHref = q ? `/bookshelf?q=${encodeURIComponent(q)}` : '/bookshelf'
+<Link href={backHref}>本棚</Link>
+```
+
+将来の他ページ (例: 巻詳細・ストア絞り込み復元) も同方針で揃える。
+
 ---
 
 ## 7. Cloudflare Pages Edge Runtime の制約
