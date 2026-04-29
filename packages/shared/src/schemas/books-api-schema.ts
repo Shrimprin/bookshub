@@ -4,6 +4,7 @@ import { storeSchema, thumbnailUrlSchema, storeProductIdSchema } from './book-sc
 // --- パスパラメータ ---
 
 export const userBookIdSchema = z.string().uuid()
+export const seriesIdSchema = z.string().uuid()
 
 // --- POST /api/books リクエスト ---
 
@@ -79,6 +80,7 @@ export const registerBookResponseSchema = z.object({
 // --- 型 ---
 
 export type UserBookId = z.infer<typeof userBookIdSchema>
+export type SeriesId = z.infer<typeof seriesIdSchema>
 export type RegisterBook = z.infer<typeof registerBookSchema>
 export type UpdateUserBook = z.infer<typeof updateUserBookSchema>
 export type GetBooksQuery = z.infer<typeof getBooksQuerySchema>
