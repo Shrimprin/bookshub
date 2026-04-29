@@ -35,6 +35,21 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('[BookHub] Extension installed')
 })
 
+// chrome.storage.session はデフォルトで content script からアクセス不可。
+// Kindle content script (kindle.ts) が trigger flag を読めるよう、明示的に
+// TRUSTED_AND_UNTRUSTED_CONTEXTS を設定する。設定は Chrome に永続化されるが、
+// SW 再起動・拡張更新時にも確実に有効化するためトップレベルで毎回呼ぶ。
+// (idempotent な操作で副作用なし)
+try {
+  void chrome.storage.session.setAccessLevel({
+    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
+  })
+} catch {
+  // 古い Chrome バージョン等で setAccessLevel 未対応の場合に備え握りつぶす。
+  // その場合は trigger flag の読み取りが失敗するが、kindle.ts 側で
+  // try/catch せず main() failed として記録されるので問題が顕在化する。
+}
+
 // --- メッセージハンドラ（テスト用に export） ---
 
 function isValidMessage(message: unknown): message is ExtensionMessage {

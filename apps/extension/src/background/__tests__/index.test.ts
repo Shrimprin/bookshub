@@ -17,7 +17,16 @@ const EXTENSION_ID = 'test-extension-id'
 // onRemoved リスナーをキャプチャして手動発火できるようにする
 let capturedOnRemoved: ((tabId: number) => unknown) | undefined
 
-function makeStorageAreaMock(store: Map<string, unknown>) {
+// session 領域用に setAccessLevel もモック化する (background が import 時に呼ぶ)
+// clearAllMocks で履歴が消えるため、import 時の引数を別変数で退避する。
+// vi.fn のかわりに pure function spy を使い mockImplementation 経由のリセット影響を排除する。
+const capturedSetAccessLevelCalls: Array<{ accessLevel: string }> = []
+const sessionSetAccessLevel = (opts: { accessLevel: string }) => {
+  capturedSetAccessLevelCalls.push(opts)
+  return Promise.resolve()
+}
+
+function makeStorageAreaMock(store: Map<string, unknown>, extras: Record<string, unknown> = {}) {
   return {
     get: vi.fn((keys: string[]) => {
       const result: Record<string, unknown> = {}
@@ -39,6 +48,7 @@ function makeStorageAreaMock(store: Map<string, unknown>) {
       }
       return Promise.resolve()
     }),
+    ...extras,
   }
 }
 
@@ -52,7 +62,7 @@ vi.stubGlobal('chrome', {
   },
   storage: {
     local: makeStorageAreaMock(mockStorageData),
-    session: makeStorageAreaMock(mockSessionData),
+    session: makeStorageAreaMock(mockSessionData, { setAccessLevel: sessionSetAccessLevel }),
   },
   tabs: {
     query: vi.fn((queryInfo: { url: string }) => {
@@ -827,6 +837,15 @@ describe('background', () => {
       expect(result).toMatchObject({ status: 'success' })
       // trigger 由来のフィールドは未設定
       expect(result.trigger).toBeUndefined()
+    })
+  })
+
+  describe('chrome.storage.session access level (content script 連携)', () => {
+    it('background 起動時に setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS) を呼ぶ', () => {
+      // import 時 (一度だけ実行される) の引数を capturedSetAccessLevelCalls に退避済み。
+      expect(capturedSetAccessLevelCalls).toContainEqual({
+        accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
+      })
     })
   })
 
