@@ -114,16 +114,18 @@ describe('sendTokenToExtension', () => {
     }
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    const { sendTokenToExtension } = await import('../send-token')
-    await sendTokenToExtension('')
+    try {
+      const { sendTokenToExtension } = await import('../send-token')
+      await sendTokenToExtension('')
 
-    expect(sendMessage).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[sendTokenToExtension] invalid message, skipping send',
-      expect.objectContaining({ path: ['token'] }),
-    )
-
-    warnSpy.mockRestore()
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[sendTokenToExtension] invalid message, skipping send',
+        expect.objectContaining({ path: ['token'] }),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('8192 文字を超える token は shared スキーマで弾かれ sendMessage を呼ばない', async () => {
@@ -134,15 +136,17 @@ describe('sendTokenToExtension', () => {
     }
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    const { sendTokenToExtension } = await import('../send-token')
-    await sendTokenToExtension('a'.repeat(8193))
+    try {
+      const { sendTokenToExtension } = await import('../send-token')
+      await sendTokenToExtension('a'.repeat(8193))
 
-    expect(sendMessage).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[sendTokenToExtension] invalid message, skipping send',
-      expect.objectContaining({ path: ['token'] }),
-    )
-
-    warnSpy.mockRestore()
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[sendTokenToExtension] invalid message, skipping send',
+        expect.objectContaining({ path: ['token'] }),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

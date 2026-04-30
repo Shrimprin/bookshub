@@ -35,6 +35,8 @@ export async function sendTokenToExtension(token: string | null): Promise<void> 
   if (typeof chrome === 'undefined') return
   if (!chrome?.runtime?.sendMessage) return
 
+  // CLEAR は現状フィールドを持たないため safeParse は常に成功するが、将来 schema に
+  // 制約が追加された場合も自動でガードされるよう対称的に safeParse を通す。
   const parsed =
     token === null
       ? clearAccessTokenMessageSchema.safeParse({ type: 'CLEAR_ACCESS_TOKEN' })
@@ -42,11 +44,13 @@ export async function sendTokenToExtension(token: string | null): Promise<void> 
 
   if (!parsed.success) {
     // shared スキーマ違反は呼び出し側に伝播させない (no-op 設計を維持)。
-    // path / code を出力して運用時に「token 空」「token 上限超え」を区別可能にする。
+    // path / code / message を出力して運用時に原因特定を素早くできるようにする
+    // (Zod の issue.message は安全。token 本体はログに出さない)。
     const issue = parsed.error.issues[0]
     console.warn('[sendTokenToExtension] invalid message, skipping send', {
       path: issue?.path,
       code: issue?.code,
+      message: issue?.message,
     })
     return
   }
