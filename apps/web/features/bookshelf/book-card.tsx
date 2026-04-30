@@ -8,7 +8,9 @@ interface BookCardProps {
 }
 
 export function BookCard({ book }: BookCardProps) {
-  const titleWithVolume = book.volumeNumber ? `${book.title} (${book.volumeNumber}巻)` : book.title
+  // volumeNumber は schema 上 `positive` 制約 (1〜9999) または null。タイトル併記とバッジで判定を揃える。
+  const hasVolume = book.volumeNumber !== null
+  const titleWithVolume = hasVolume ? `${book.title} (${book.volumeNumber}巻)` : book.title
   const storeUrl = buildStoreUrl(book.store, book.storeProductId)
   const isLinked = Boolean(storeUrl)
 
@@ -28,7 +30,7 @@ export function BookCard({ book }: BookCardProps) {
             No Cover
           </div>
         )}
-        {book.volumeNumber !== null ? (
+        {hasVolume ? (
           <span
             className="absolute bottom-2 left-2 rounded-full bg-secondary/90 px-2 py-0.5 font-mono text-xs font-semibold text-secondary-foreground shadow-glow-secondary backdrop-blur-sm"
             aria-hidden="true"
