@@ -47,12 +47,12 @@ export default async function BookshelfPage({ searchParams }: BookshelfPageProps
     <main className="mx-auto w-full max-w-7xl px-4 py-8">
       {/* スクリーンリーダー用の見出し。サイトヘッダーのロゴが視覚的役割を担うため画面上では非表示。 */}
       <h1 className="sr-only">本棚</h1>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="font-mono text-sm text-muted-foreground">{total} シリーズ</p>
-        <KindleImportButton />
-      </div>
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <BookSearchForm defaultValue={trimmed} />
+        <div className="ml-auto flex flex-col items-end gap-1">
+          <KindleImportButton />
+          <p className="font-mono text-xs text-muted-foreground">{total} シリーズ</p>
+        </div>
       </div>
       <SeriesGallery
         series={series}
