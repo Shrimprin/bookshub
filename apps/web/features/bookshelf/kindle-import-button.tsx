@@ -15,11 +15,11 @@ interface Feedback {
   cta?: { label: string; href: string }
 }
 
-// Cyberpunk palette: success → cyan (secondary), warn → magenta (primary), info → muted, error → destructive.
+// Cyberpunk palette: success → green (secondary), warn → pink (destructive), info → muted, error → destructive.
 const KIND_CLASSNAME: Record<FeedbackKind, string> = {
   success: 'text-secondary',
   info: 'text-muted-foreground',
-  warn: 'text-primary',
+  warn: 'text-destructive',
   error: 'text-destructive',
 }
 

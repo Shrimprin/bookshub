@@ -6,8 +6,13 @@
 /*
  * Cyberpunk neon design tokens.
  *
- * - Light mode: clean lavender-tinted whites with deeper ink/neon accents (book covers stay readable).
- * - Dark mode (default): deep purple-black with neon pink/cyan/violet accents and glow shadows.
+ * - Primary   = サイバーネオンの水色 (cyan)
+ * - Secondary = 緑 (green)
+ * - Destructive (警告) = ピンク/マゼンタ
+ * - Accent    = エレクトリックバイオレット
+ *
+ * Light mode: clean lavender-tinted whites, neon は控えめ (書影視認性優先)。
+ * Dark mode (主役): deep purple-black に上記ネオンとグローを乗せる。
  *
  * Variables follow the shadcn convention (HSL triplets) so existing primitives
  * (Button, Card, Input, Badge) keep working without modification.
@@ -24,10 +29,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 260 20% 12%;
 
-    --primary: 325 85% 52%;
+    --primary: 195 90% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 195 90% 42%;
+    --secondary: 145 65% 35%;
     --secondary-foreground: 0 0% 100%;
 
     --muted: 280 20% 95%;
@@ -36,18 +41,18 @@
     --accent: 280 70% 50%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 75% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 325 85% 52%;
+    --destructive-foreground: 0 0% 100%;
 
     --border: 280 25% 88%;
     --input: 280 25% 88%;
-    --ring: 325 85% 55%;
+    --ring: 195 90% 50%;
 
     --radius: 0.625rem;
 
     /* Glow shadows are intentionally subtle in light mode to keep covers clean. */
-    --shadow-glow-primary: 0 0 8px hsl(325 85% 55% / 0.25);
-    --shadow-glow-secondary: 0 0 8px hsl(195 90% 45% / 0.25);
+    --shadow-glow-primary: 0 0 8px hsl(195 90% 45% / 0.25);
+    --shadow-glow-secondary: 0 0 8px hsl(145 65% 38% / 0.25);
     --shadow-glow-soft: 0 0 6px hsl(280 70% 50% / 0.15);
   }
 
@@ -61,10 +66,10 @@
     --popover: 260 20% 9%;
     --popover-foreground: 300 20% 96%;
 
-    --primary: 320 100% 60%;
+    --primary: 190 100% 55%;
     --primary-foreground: 240 15% 6%;
 
-    --secondary: 190 100% 55%;
+    --secondary: 140 90% 55%;
     --secondary-foreground: 240 15% 6%;
 
     --muted: 260 15% 14%;
@@ -73,17 +78,17 @@
     --accent: 280 80% 55%;
     --accent-foreground: 300 20% 96%;
 
-    --destructive: 0 90% 60%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 320 100% 60%;
+    --destructive-foreground: 240 15% 6%;
 
-    --border: 280 40% 22%;
-    --input: 280 40% 22%;
-    --ring: 320 100% 65%;
+    --border: 260 40% 22%;
+    --input: 260 40% 22%;
+    --ring: 190 100% 65%;
 
     --shadow-glow-primary:
-      0 0 12px hsl(320 100% 60% / 0.55), 0 0 32px hsl(320 100% 60% / 0.25);
+      0 0 12px hsl(190 100% 55% / 0.55), 0 0 32px hsl(190 100% 55% / 0.25);
     --shadow-glow-secondary:
-      0 0 10px hsl(190 100% 55% / 0.5), 0 0 28px hsl(190 100% 55% / 0.2);
+      0 0 10px hsl(140 90% 55% / 0.5), 0 0 28px hsl(140 90% 55% / 0.2);
     --shadow-glow-soft: 0 0 8px hsl(280 80% 55% / 0.35);
   }
 
@@ -105,8 +110,8 @@
     z-index: -1;
     pointer-events: none;
     background-image:
-      linear-gradient(to right, hsl(280 80% 55% / 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(190 100% 55% / 0.04) 1px, transparent 1px);
+      linear-gradient(to right, hsl(var(--accent) / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--primary) / 0.05) 1px, transparent 1px);
     background-size: 32px 32px;
   }
 

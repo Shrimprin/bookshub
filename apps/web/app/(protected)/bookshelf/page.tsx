@@ -45,9 +45,7 @@ export default async function BookshelfPage({ searchParams }: BookshelfPageProps
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8">
       <header className="mb-6 flex flex-wrap items-baseline gap-3">
-        <h1 className="bg-gradient-to-r from-primary to-secondary bg-clip-text font-display text-3xl font-bold tracking-wide text-transparent">
-          本棚
-        </h1>
+        <h1 className="font-display text-3xl font-bold tracking-wide text-foreground">本棚</h1>
         <p className="font-mono text-sm text-muted-foreground">{total} シリーズ</p>
       </header>
       <BookSearchForm defaultValue={trimmed} />

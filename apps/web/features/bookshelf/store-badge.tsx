@@ -8,10 +8,10 @@ const STORE_LABEL: Record<Store, string> = {
   other: 'その他',
 }
 
-// Cyberpunk palette: Kindle = cyan glow, DMM = pink/magenta glow, other = outline-only.
+// Cyberpunk palette: Kindle = cyan glow (primary), DMM = green glow (secondary), other = outline-only.
 const STORE_VARIANT: Record<Store, 'neon' | 'neonSecondary' | 'neonOutline'> = {
-  kindle: 'neonSecondary',
-  dmm: 'neon',
+  kindle: 'neon',
+  dmm: 'neonSecondary',
   other: 'neonOutline',
 }
 
