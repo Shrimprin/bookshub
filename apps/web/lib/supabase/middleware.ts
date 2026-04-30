@@ -3,8 +3,30 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_PATHS = ['/', '/login', '/signup']
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+export type UpdateSessionOptions = {
+  /**
+   * CSP nonce。指定された場合、`NextResponse.next()` 経路すべてに `x-nonce` request header
+   * を付与し、Next.js が RSC ハイドレーションスクリプトに自動で nonce を埋め込めるようにする。
+   * リダイレクト/JSON 経路ではブラウザに到達するレスポンス自体には影響せず、CSP ヘッダ自身は
+   * 呼び出し側 (middleware オーケストレータ) が response.headers に set する。
+   */
+  nonce?: string
+}
+
+export async function updateSession(request: NextRequest, options: UpdateSessionOptions = {}) {
+  const { nonce } = options
+
+  // setAll コールバックは Supabase が refresh した cookie を request.cookies へ反映する。
+  // request.cookies の変更は request.headers にも同期するため、x-nonce を載せた snapshot は
+  // setAll 呼び出しごとに作り直す必要がある (古い snapshot を使うと cookie 更新が失われる)。
+  const buildNextOptions = () => {
+    if (!nonce) return { request }
+    const headers = new Headers(request.headers)
+    headers.set('x-nonce', nonce)
+    return { request: { headers } }
+  }
+
+  let supabaseResponse = NextResponse.next(buildNextOptions())
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +38,7 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
+          supabaseResponse = NextResponse.next(buildNextOptions())
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           )
@@ -37,7 +59,7 @@ export async function updateSession(request: NextRequest) {
     hasBearerToken &&
     BEARER_AUTH_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'))
   ) {
-    return NextResponse.next({ request })
+    return NextResponse.next(buildNextOptions())
   }
 
   // CRITICAL: getSession() はサーバーサイドで信頼不可。必ず getUser() を使うこと
