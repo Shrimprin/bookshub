@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
+import { ChevronRight } from 'lucide-react'
 import { seriesIdSchema } from '@bookhub/shared'
 import { createClient } from '@/lib/supabase/server'
 import { getSeriesDetail } from '@/lib/books/get-series-detail'
@@ -37,16 +38,26 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8">
-      <nav className="mb-4 text-sm text-muted-foreground" aria-label="パンくず">
-        <Link href={backHref} className="hover:underline">
+      <nav
+        className="mb-4 flex items-center gap-1 text-sm text-muted-foreground"
+        aria-label="パンくず"
+      >
+        <Link
+          href={backHref}
+          className="rounded transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-none"
+        >
           本棚
         </Link>
-        <span className="mx-1">/</span>
-        <span aria-current="page">{detail.series.title}</span>
+        <ChevronRight className="size-3.5" aria-hidden="true" />
+        <span aria-current="page" className="text-foreground">
+          {detail.series.title}
+        </span>
       </nav>
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">{detail.series.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="bg-gradient-to-r from-primary to-secondary bg-clip-text font-display text-3xl font-bold tracking-wide text-transparent">
+          {detail.series.title}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           {detail.series.author} · {detail.volumes.length} 巻所持
         </p>
       </header>

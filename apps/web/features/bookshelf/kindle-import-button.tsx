@@ -15,10 +15,12 @@ interface Feedback {
   cta?: { label: string; href: string }
 }
 
+// Cyberpunk palette: success → green (secondary), info → muted, warn → violet (accent), error → pink (destructive).
+// warn と error を区別するため warn だけ accent に寄せる (回復可能な案内 vs 操作失敗)。
 const KIND_CLASSNAME: Record<FeedbackKind, string> = {
-  success: 'text-emerald-700',
+  success: 'text-secondary',
   info: 'text-muted-foreground',
-  warn: 'text-amber-700',
+  warn: 'text-accent',
   error: 'text-destructive',
 }
 
@@ -81,7 +83,7 @@ export function KindleImportButton() {
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <Button onClick={handleClick} disabled={pending} variant="default" size="default">
+      <Button onClick={handleClick} disabled={pending} variant="neon" size="default">
         {pending ? '送信中…' : 'Kindle から取り込み'}
       </Button>
       {feedback && (

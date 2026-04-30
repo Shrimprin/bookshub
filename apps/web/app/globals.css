@@ -1,1 +1,198 @@
 @import "tailwindcss";
+
+/* Class-based dark mode (toggled by next-themes via attribute="class") */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Cyberpunk neon design tokens.
+ *
+ * - Primary   = サイバーネオンの水色 (cyan)
+ * - Secondary = 緑 (green)
+ * - Destructive (警告) = ピンク/マゼンタ
+ * - Accent    = エレクトリックバイオレット
+ *
+ * Light mode: clean lavender-tinted whites, neon は控えめ (書影視認性優先)。
+ * Dark mode (主役): deep purple-black に上記ネオンとグローを乗せる。
+ *
+ * Variables follow the shadcn convention (HSL triplets) so existing primitives
+ * (Button, Card, Input, Badge) keep working without modification.
+ */
+
+@layer base {
+  :root {
+    --background: 300 20% 99%;
+    --foreground: 260 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 260 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 260 20% 12%;
+
+    /* WCAG AA: 全ての *-foreground は white 固定なので、L 値は 4.5:1 達成のため調整済み。 */
+    --primary: 195 90% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 145 65% 27%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 280 20% 95%;
+    --muted-foreground: 260 10% 35%;
+
+    --accent: 280 70% 42%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 325 80% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 280 25% 88%;
+    --input: 280 25% 88%;
+    --ring: 195 90% 40%;
+
+    --radius: 0.625rem;
+
+    /* Glow shadows are intentionally subtle in light mode to keep covers clean. */
+    --shadow-glow-primary: 0 0 8px hsl(195 90% 40% / 0.25);
+    --shadow-glow-secondary: 0 0 8px hsl(145 65% 32% / 0.25);
+    --shadow-glow-soft: 0 0 6px hsl(280 70% 50% / 0.15);
+  }
+
+  .dark {
+    --background: 240 15% 6%;
+    --foreground: 300 20% 96%;
+
+    --card: 260 20% 9%;
+    --card-foreground: 300 20% 96%;
+
+    --popover: 260 20% 9%;
+    --popover-foreground: 300 20% 96%;
+
+    --primary: 190 100% 55%;
+    --primary-foreground: 240 15% 6%;
+
+    --secondary: 140 90% 55%;
+    --secondary-foreground: 240 15% 6%;
+
+    --muted: 260 15% 14%;
+    --muted-foreground: 280 15% 65%;
+
+    --accent: 280 80% 55%;
+    --accent-foreground: 300 20% 96%;
+
+    --destructive: 320 100% 60%;
+    --destructive-foreground: 240 15% 6%;
+
+    --border: 260 40% 22%;
+    --input: 260 40% 22%;
+    --ring: 190 100% 65%;
+
+    --shadow-glow-primary:
+      0 0 12px hsl(190 100% 55% / 0.55), 0 0 32px hsl(190 100% 55% / 0.25);
+    --shadow-glow-secondary:
+      0 0 10px hsl(140 90% 55% / 0.5), 0 0 28px hsl(140 90% 55% / 0.2);
+    --shadow-glow-soft: 0 0 8px hsl(280 80% 55% / 0.35);
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Subtle cyberpunk grid (dark mode only). Sits behind everything; opacity is low so book covers shine. */
+  .dark body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, hsl(var(--accent) / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--primary) / 0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--accent) / 0.18) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+/*
+ * Map our HSL variables onto Tailwind v4's color utilities so that existing
+ * `bg-primary`, `text-foreground`, `border-border`, etc. resolve correctly.
+ * Also expose the glow shadow utilities (`shadow-glow-primary`, ...).
+ */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-glow-primary: var(--shadow-glow-primary);
+  --shadow-glow-secondary: var(--shadow-glow-secondary);
+  --shadow-glow-soft: var(--shadow-glow-soft);
+
+  --font-sans: var(--font-inter), var(--font-noto-sans-jp), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-orbitron), var(--font-inter), var(--font-noto-sans-jp), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}

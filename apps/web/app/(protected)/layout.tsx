@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ExtensionTokenBridge } from '@/components/auth/extension-token-bridge'
+import { SiteHeader } from '@/components/layout/site-header'
 
 export default async function ProtectedLayout({
   children,
@@ -19,6 +20,7 @@ export default async function ProtectedLayout({
   return (
     <>
       <ExtensionTokenBridge />
+      <SiteHeader />
       {children}
     </>
   )

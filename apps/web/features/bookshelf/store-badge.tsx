@@ -8,10 +8,11 @@ const STORE_LABEL: Record<Store, string> = {
   other: 'その他',
 }
 
-const STORE_VARIANT: Record<Store, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  kindle: 'default',
-  dmm: 'destructive',
-  other: 'secondary',
+// Cyberpunk palette: Kindle = cyan glow (primary), DMM = green glow (secondary), other = outline-only.
+const STORE_VARIANT: Record<Store, 'neon' | 'neonSecondary' | 'neonOutline'> = {
+  kindle: 'neon',
+  dmm: 'neonSecondary',
+  other: 'neonOutline',
 }
 
 interface StoreBadgeProps {
@@ -24,7 +25,7 @@ export function StoreBadge({ store, className }: StoreBadgeProps) {
   return (
     <Badge
       variant={STORE_VARIANT[store]}
-      className={cn('shadow-sm', className)}
+      className={cn(className)}
       aria-label={`購入ストア: ${label}`}
     >
       {label}
