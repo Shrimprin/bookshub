@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono, Noto_Sans_JP, Orbitron } from 'next/font/google'
+import { headers } from 'next/headers'
 
 import { ThemeProvider } from '@/components/theme-provider'
 
@@ -41,11 +42,20 @@ export const metadata: Metadata = {
   description: '漫画ヘビーユーザー向け本棚管理・二度買い防止サービス',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // middleware が per-request で生成した nonce を受け取り、next-themes の inline 初期化スクリプトに
+  // 渡す。これがないと strict-dynamic 配下で next-themes の inline script が CSP 違反でブロックされ、
+  // FOUC やテーマ初期化失敗を引き起こす。Next.js が出力する RSC ハイドレーションスクリプトには
+  // x-nonce request header から自動付与されるため、追加対応は不要。
+  // exactOptionalPropertyTypes: true 配下で nonce?: string に undefined を直接渡せないため、
+  // x-nonce が無い経路 (middleware を通らない / static 化されたケース) では prop ごと省略する。
+  const nonce = (await headers()).get('x-nonce')
+  const themeProviderNonce = nonce ? { nonce } : {}
+
   return (
     <html
       lang="ja"
@@ -58,6 +68,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
+          {...themeProviderNonce}
         >
           {children}
         </ThemeProvider>
