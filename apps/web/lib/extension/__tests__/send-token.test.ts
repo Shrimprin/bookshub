@@ -105,4 +105,48 @@ describe('sendTokenToExtension', () => {
     const { sendTokenToExtension } = await import('../send-token')
     await expect(sendTokenToExtension('token')).resolves.toBeUndefined()
   })
+
+  it('空文字列の token は shared スキーマで弾かれ sendMessage を呼ばない', async () => {
+    process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-extension-id'
+    const sendMessage = vi.fn()
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage, id: 'browser-ext-id', lastError: null },
+    }
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      const { sendTokenToExtension } = await import('../send-token')
+      await sendTokenToExtension('')
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[sendTokenToExtension] invalid message, skipping send',
+        expect.objectContaining({ path: ['token'] }),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('8192 文字を超える token は shared スキーマで弾かれ sendMessage を呼ばない', async () => {
+    process.env.NEXT_PUBLIC_EXTENSION_ID = 'my-extension-id'
+    const sendMessage = vi.fn()
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage, id: 'browser-ext-id', lastError: null },
+    }
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      const { sendTokenToExtension } = await import('../send-token')
+      await sendTokenToExtension('a'.repeat(8193))
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[sendTokenToExtension] invalid message, skipping send',
+        expect.objectContaining({ path: ['token'] }),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
 })

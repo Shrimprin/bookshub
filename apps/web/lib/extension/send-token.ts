@@ -5,15 +5,23 @@
 // - chrome グローバルが未定義 (Firefox/Safari/SSR)
 // - NEXT_PUBLIC_EXTENSION_ID が未設定 (拡張機能未運用)
 // - 拡張機能が未インストール (chrome.runtime.lastError が発生)
+// - 送信前 safeParse でメッセージが shared スキーマに反した場合 (warn してスキップ)
 
-type ExternalRequest = { type: 'SET_ACCESS_TOKEN'; token: string } | { type: 'CLEAR_ACCESS_TOKEN' }
+import {
+  clearAccessTokenMessageSchema,
+  setAccessTokenMessageSchema,
+  type ClearAccessTokenMessage,
+  type SetAccessTokenMessage,
+} from '@bookhub/shared'
+
+type SendableMessage = SetAccessTokenMessage | ClearAccessTokenMessage
 
 declare const chrome:
   | {
       runtime?: {
         sendMessage?: (
           extensionId: string,
-          message: ExternalRequest,
+          message: SendableMessage,
           callback?: (response: unknown) => void,
         ) => void
         lastError?: { message?: string } | null
@@ -27,8 +35,27 @@ export async function sendTokenToExtension(token: string | null): Promise<void> 
   if (typeof chrome === 'undefined') return
   if (!chrome?.runtime?.sendMessage) return
 
-  const message: ExternalRequest =
-    token === null ? { type: 'CLEAR_ACCESS_TOKEN' } : { type: 'SET_ACCESS_TOKEN', token }
+  // CLEAR は現状フィールドを持たないため safeParse は常に成功するが、将来 schema に
+  // 制約が追加された場合も自動でガードされるよう対称的に safeParse を通す。
+  const parsed =
+    token === null
+      ? clearAccessTokenMessageSchema.safeParse({ type: 'CLEAR_ACCESS_TOKEN' })
+      : setAccessTokenMessageSchema.safeParse({ type: 'SET_ACCESS_TOKEN', token })
+
+  if (!parsed.success) {
+    // shared スキーマ違反は呼び出し側に伝播させない (no-op 設計を維持)。
+    // path / code / message を出力して運用時に原因特定を素早くできるようにする
+    // (Zod の issue.message は安全。token 本体はログに出さない)。
+    const issue = parsed.error.issues[0]
+    console.warn('[sendTokenToExtension] invalid message, skipping send', {
+      path: issue?.path,
+      code: issue?.code,
+      message: issue?.message,
+    })
+    return
+  }
+
+  const message = parsed.data
 
   return new Promise<void>((resolve) => {
     try {
