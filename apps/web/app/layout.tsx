@@ -12,7 +12,10 @@ const inter = Inter({
 })
 
 const notoSansJp = Noto_Sans_JP({
+  // Google Fonts の Noto Sans JP は `'japanese'` サブセットを公開しておらず (CJK は unicode-range で配信される)、
+  // `latin` だけプリロードしても日本語の FOUT 抑制には役立たない。誤解を招く preload タグを抑止して on-demand ロードに任せる。
   subsets: ['latin'],
+  preload: false,
   variable: '--font-noto-sans-jp',
   display: 'swap',
   weight: ['400', '500', '700'],
@@ -21,7 +24,9 @@ const notoSansJp = Noto_Sans_JP({
 const orbitron = Orbitron({
   subsets: ['latin'],
   variable: '--font-orbitron',
-  display: 'swap',
+  // LP の Orbitron 大見出しは LCP 候補。swap → optional でフォントスワップ起因の CLS を排除し、
+  // ロード遅延時はフォールバックを最後まで使う。
+  display: 'optional',
   weight: ['500', '700'],
 })
 

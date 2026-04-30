@@ -2,6 +2,10 @@ import Link from 'next/link'
 import { BookMarked, ScanSearch, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/server'
+
+// LP は静的 prerender ではなく、ログイン状態を反映するため動的レンダリング。
+export const dynamic = 'force-dynamic'
 
 const FEATURES = [
   {
@@ -21,7 +25,13 @@ const FEATURES = [
   },
 ] as const
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const isAuthenticated = Boolean(user)
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Radial neon ambience (dark mode shines, light mode is muted). */}
@@ -43,12 +53,15 @@ export default function Home() {
           二度買いを防ぎ、本棚を眺める時間そのものを愛でる。
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild variant="neon" size="lg">
-            <Link href="/login">ログイン / 新規登録</Link>
-          </Button>
-          <Button asChild variant="neonOutline" size="lg">
-            <Link href="/bookshelf">本棚を開く</Link>
-          </Button>
+          {isAuthenticated ? (
+            <Button asChild variant="neon" size="lg">
+              <Link href="/bookshelf">本棚を開く</Link>
+            </Button>
+          ) : (
+            <Button asChild variant="neon" size="lg">
+              <Link href="/login">ログイン / 新規登録</Link>
+            </Button>
+          )}
         </div>
 
         <ul className="mt-20 grid w-full grid-cols-1 gap-4 text-left sm:grid-cols-3">

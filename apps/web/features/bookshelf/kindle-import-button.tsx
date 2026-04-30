@@ -15,11 +15,12 @@ interface Feedback {
   cta?: { label: string; href: string }
 }
 
-// Cyberpunk palette: success → green (secondary), warn → pink (destructive), info → muted, error → destructive.
+// Cyberpunk palette: success → green (secondary), info → muted, warn → violet (accent), error → pink (destructive).
+// warn と error を区別するため warn だけ accent に寄せる (回復可能な案内 vs 操作失敗)。
 const KIND_CLASSNAME: Record<FeedbackKind, string> = {
   success: 'text-secondary',
   info: 'text-muted-foreground',
-  warn: 'text-destructive',
+  warn: 'text-accent',
   error: 'text-destructive',
 }
 

@@ -29,30 +29,31 @@
     --popover: 0 0% 100%;
     --popover-foreground: 260 20% 12%;
 
-    --primary: 195 90% 42%;
+    /* WCAG AA: 全ての *-foreground は white 固定なので、L 値は 4.5:1 達成のため調整済み。 */
+    --primary: 195 90% 32%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 145 65% 35%;
+    --secondary: 145 65% 27%;
     --secondary-foreground: 0 0% 100%;
 
     --muted: 280 20% 95%;
-    --muted-foreground: 260 10% 45%;
+    --muted-foreground: 260 10% 35%;
 
-    --accent: 280 70% 50%;
+    --accent: 280 70% 42%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 325 85% 52%;
+    --destructive: 325 80% 42%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 280 25% 88%;
     --input: 280 25% 88%;
-    --ring: 195 90% 50%;
+    --ring: 195 90% 40%;
 
     --radius: 0.625rem;
 
     /* Glow shadows are intentionally subtle in light mode to keep covers clean. */
-    --shadow-glow-primary: 0 0 8px hsl(195 90% 45% / 0.25);
-    --shadow-glow-secondary: 0 0 8px hsl(145 65% 38% / 0.25);
+    --shadow-glow-primary: 0 0 8px hsl(195 90% 40% / 0.25);
+    --shadow-glow-secondary: 0 0 8px hsl(145 65% 32% / 0.25);
     --shadow-glow-soft: 0 0 6px hsl(280 70% 50% / 0.15);
   }
 

@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import { BookMarked } from 'lucide-react'
 
-import { KindleImportButton } from '@/features/bookshelf/kindle-import-button'
 import { ThemeToggle } from '@/components/theme-toggle'
 
+/**
+ * 全保護ページで共有されるグローバルヘッダー。
+ * ページ固有のアクション (例: 本棚での Kindle 取り込み) は各ページの header 内に配置する。
+ * 拡張性が必要になったら rightSlot prop を再導入する。
+ */
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -23,10 +27,7 @@ export function SiteHeader() {
             BookHub
           </span>
         </Link>
-        <div className="flex items-center gap-2">
-          <KindleImportButton />
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
       </div>
     </header>
   )
