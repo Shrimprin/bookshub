@@ -50,31 +50,29 @@ export function BookSearchForm({ defaultValue }: BookSearchFormProps) {
   }, [value, defaultValue, pathname, router])
 
   return (
-    <div className="mb-6">
+    <div className="relative max-w-md">
       <label htmlFor="bookshelf-search" className="sr-only">
         タイトル・著者で検索
       </label>
-      <div className="relative max-w-md">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <Input
+        id="bookshelf-search"
+        type="search"
+        placeholder="タイトル・著者で検索 (2 文字以上)"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="pl-9 pr-9"
+        aria-busy={isPending}
+      />
+      {isPending ? (
+        <Loader2
+          className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
           aria-hidden="true"
         />
-        <Input
-          id="bookshelf-search"
-          type="search"
-          placeholder="タイトル・著者で検索 (2 文字以上)"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="pl-9 pr-9"
-          aria-busy={isPending}
-        />
-        {isPending ? (
-          <Loader2
-            className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
-            aria-hidden="true"
-          />
-        ) : null}
-      </div>
+      ) : null}
     </div>
   )
 }
