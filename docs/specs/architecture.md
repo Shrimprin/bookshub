@@ -527,11 +527,11 @@ const backHref = q ? `/bookshelf?q=${encodeURIComponent(q)}` : '/bookshelf'
 
 - Issue #12 (本棚ギャラリー UI) の code review で、`script-src` の `'unsafe-inline'` により XSS 防御の CSP 実効性が大幅に下がる点を指摘された
 - 同 PR では `wss` / `object-src` / `worker-src` 等の他 CSP 強化を先行投入し、nonce 方式への移行は Issue #28 として分離した
-- Next.js 16 公式ドキュメントが推奨する middleware ベースの nonce 注入パターンに準拠
+- Next.js 15+ 公式ドキュメント (App Router CSP guide) が推奨する middleware ベースの nonce 注入パターンに準拠
 
 **採用した設計:**
 
-- **middleware オーケストレータ (`apps/web/middleware.ts`)**: per-request で nonce 生成 → `updateSession` 呼び出し (CSP 注入と認証 Cookie 同期の責務分離) → 出口で `response.headers.set('Content-Security-Policy', csp)` を 1 回だけ実行
+- **middleware オーケストレータ (`apps/web/middleware.ts`)**: per-request で nonce 生成 → `updateSession` 呼び出し (CSP 注入と認証 Cookie 同期の責務分離) → 出口で `response.headers.set('Content-Security-Policy', csp)` を 1 回だけ実行。redirect (3xx) や JSON 401 のようなブラウザが CSP を評価しないレスポンスにも一律で付与されるが、これは経路漏れ防止の保険であり害は無い (HTML レスポンスのみがブラウザで CSP 評価される)
 - **CSP ビルダー (`apps/web/lib/csp/build-csp.ts`)**: 純粋関数として CSP 文字列を組み立て、許可ホスト一覧を `@bookhub/shared` から単一ソースで取得
 - **nonce 生成 (`apps/web/lib/csp/generate-nonce.ts`)**: `crypto.getRandomValues(Uint8Array(16))` + `btoa` で 128bit base64 nonce を生成。`Buffer` 非依存のため Edge Runtime / Cloudflare Workers Runtime で動作
 - **layout (`apps/web/app/layout.tsx`)**: `await headers()` で `x-nonce` を取得し、next-themes の inline 初期化スクリプト用に `nonce` prop で渡す。Next.js が出力する RSC ハイドレーションスクリプトには `x-nonce` request header から自動付与されるため追加対応不要

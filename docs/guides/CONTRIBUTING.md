@@ -516,7 +516,7 @@ Authorization: Bearer <token>
 `apps/web` は middleware で per-request nonce を生成し、`script-src 'self' 'nonce-{nonce}' 'strict-dynamic'` で運用している (詳細は `docs/specs/architecture.md` §6.5)。inline script を追加する際は以下のルールに従う。
 
 - **inline `<script>` は必ず nonce を付与する**: Server Component なら `import { headers } from 'next/headers'` で `(await headers()).get('x-nonce')` を取得し、`<Script nonce={nonce}>` (next/script) または `<script nonce={nonce}>` で渡す
-- **サードパーティ script は `next/script` 経由で読み込む**: `<script src="https://...">` 直書きは `'strict-dynamic'` 配下では nonce 未付与で動かない。Sentry / GA / 楽天 widget 等を追加する場合は必ず `next/script` を使うこと
+- **サードパーティ script は `next/script` 経由 or 明示的に nonce を付与する**: `<script src="https://...">` 直書きは `'strict-dynamic'` 配下では nonce 未付与だと弾かれる。`next/script` を使えば自動付与されるため推奨。直接 `<script>` タグを使う必要がある場合は `<script src="..." nonce={nonce}>` のように `headers()` から取得した nonce を明示的に渡すこと
 - **inline `style="..."` 属性は引き続き許可**: `style-src 'self' 'unsafe-inline'` を据え置いているため、Tailwind の static class や Radix Popper の動的 inline style はそのまま動く
 - **CSP に新しい許可ホスト (img-src / connect-src / font-src 等) を追加する場合**: `apps/web/lib/csp/build-csp.ts` を編集する。`next.config.ts` に CSP は無いので注意
 

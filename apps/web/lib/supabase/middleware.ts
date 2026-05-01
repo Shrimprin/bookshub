@@ -16,9 +16,11 @@ export type UpdateSessionOptions = {
 export async function updateSession(request: NextRequest, options: UpdateSessionOptions = {}) {
   const { nonce } = options
 
-  // setAll コールバックは Supabase が refresh した cookie を request.cookies へ反映する。
-  // request.cookies の変更は request.headers にも同期するため、x-nonce を載せた snapshot は
-  // setAll 呼び出しごとに作り直す必要がある (古い snapshot を使うと cookie 更新が失われる)。
+  // setAll コールバックは Supabase が refresh した cookie を request.cookies.set 経由で反映する。
+  // Next.js の RequestCookies は内部で同じ Headers インスタンス (`_headers`) を共有しており、
+  // set 時に Cookie ヘッダを書き戻す実装のため、`new Headers(request.headers)` を取り直すと
+  // 更新後の Cookie が新しいスナップショットに含まれる。逆に setAll 前の古いスナップショットを
+  // 使い回すと cookie refresh が失われるため、buildNextOptions は呼び出し毎に新しい snapshot を作る。
   const buildNextOptions = () => {
     if (!nonce) return { request }
     const headers = new Headers(request.headers)

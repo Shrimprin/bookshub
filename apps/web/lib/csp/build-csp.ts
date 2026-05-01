@@ -14,8 +14,10 @@ export type BuildCspOptions = {
 // dev は React Refresh runtime が eval() を使うため `'unsafe-eval'` を残す。これがないと
 // HMR runtime が初期化されず client component がサイレントに動作不能になる。
 //
-// style-src はフェーズ 4 で実機検証後に判断するため、暫定で `'unsafe-inline'` を残す。
-// Tailwind v4 / shadcn-ui (Radix Popper 等) が動的 inline style を出すため nonce 化判断は要観測。
+// style-src は当面 `'unsafe-inline'` を残す。Tailwind v4 / shadcn-ui (Radix Popper 等) が動的
+// inline style を出す可能性があるため (Issue #28 Phase 4 の判断、ADR は docs/specs/architecture.md
+// §6.5)。将来 inline style 利用無しが確証できた時点で `'self' 'nonce-{nonce}'` への厳格化を
+// 別 Issue で検討する。
 export function buildContentSecurityPolicy({ nonce, isDev }: BuildCspOptions): string {
   const scriptSrc = isDev
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
