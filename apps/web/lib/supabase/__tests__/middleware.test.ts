@@ -305,6 +305,70 @@ describe('updateSession', () => {
     })
   })
 
+  describe('CSP nonce オプション', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      setupMockAuth(null)
+    })
+
+    it('options.nonce 指定時は NextResponse.next に x-nonce 付き request.headers を渡す', async () => {
+      const { NextResponse } = await import('next/server')
+      const request = createMockRequest('/')
+
+      await updateSession(request, { nonce: 'phase2-test-nonce' })
+
+      const calls = vi.mocked(NextResponse.next).mock.calls
+      expect(calls.length).toBeGreaterThan(0)
+      const lastArg = calls[calls.length - 1][0] as
+        | { request: { headers: Headers } }
+        | { request: NextRequest }
+        | undefined
+      const headers = (lastArg as { request: { headers: Headers } } | undefined)?.request.headers
+      expect(headers).toBeInstanceOf(Headers)
+      expect((headers as Headers).get('x-nonce')).toBe('phase2-test-nonce')
+    })
+
+    it('options.csp 指定時は NextResponse.next に Content-Security-Policy 付き request.headers を渡す', async () => {
+      const { NextResponse } = await import('next/server')
+      const request = createMockRequest('/')
+
+      await updateSession(request, { nonce: 'n', csp: "script-src 'self' 'nonce-n'" })
+
+      const calls = vi.mocked(NextResponse.next).mock.calls
+      const lastArg = calls[calls.length - 1][0] as { request: { headers: Headers } } | undefined
+      const headers = lastArg?.request.headers as Headers
+      expect(headers.get('Content-Security-Policy')).toBe("script-src 'self' 'nonce-n'")
+      expect(headers.get('x-nonce')).toBe('n')
+    })
+
+    it('options 未指定時は従来どおり request をそのまま渡す (後方互換)', async () => {
+      const { NextResponse } = await import('next/server')
+      const request = createMockRequest('/')
+
+      await updateSession(request)
+
+      const calls = vi.mocked(NextResponse.next).mock.calls
+      const lastArg = calls[calls.length - 1][0] as { request: unknown } | undefined
+      expect(lastArg?.request).toBe(request)
+    })
+
+    it('Bearer pass-through 経路でも x-nonce が伝搬される', async () => {
+      const { NextResponse } = await import('next/server')
+      const request = createMockRequest('/api/scrape')
+      request.headers = {
+        get: (name: string) =>
+          name.toLowerCase() === 'authorization' ? 'Bearer valid-token' : null,
+      } as unknown as NextRequest['headers']
+
+      await updateSession(request, { nonce: 'bearer-nonce' })
+
+      const calls = vi.mocked(NextResponse.next).mock.calls
+      const lastArg = calls[calls.length - 1][0] as { request: { headers: Headers } } | undefined
+      const headers = lastArg?.request.headers as Headers
+      expect(headers.get('x-nonce')).toBe('bearer-nonce')
+    })
+  })
+
   describe('セキュリティ', () => {
     it('getUser() が呼ばれる（getSession ではなく）', async () => {
       const { mockGetUser } = setupMockAuth(null)

@@ -31,7 +31,11 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['app/**/__tests__/**/*.test.ts', 'lib/**/__tests__/**/*.test.ts'],
+          include: [
+            'app/**/__tests__/**/*.test.ts',
+            'lib/**/__tests__/**/*.test.ts',
+            '__tests__/**/*.test.ts',
+          ],
         },
       },
     ],

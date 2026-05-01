@@ -519,6 +519,63 @@ const backHref = q ? `/bookshelf?q=${encodeURIComponent(q)}` : '/bookshelf'
 - `apps/extension/src/utils/constants.ts` — `TRIGGER_TTL_MS`, `STORE_REGISTRY`, `ScrapeTriggerSource`
 - `packages/shared/src/schemas/external-message-schema.ts` — `TriggerScrapeMessage` 型定義
 
+### 6.5 CSP nonce + strict-dynamic 戦略 (ADR)
+
+**決定:** `script-src` は `'self' 'nonce-{nonce}' 'strict-dynamic'` (dev のみ `'unsafe-eval'` を追加)。CSP は middleware で per-request nonce を埋め込み、`response.headers` に set する。`style-src` は `'self' 'unsafe-inline'` を当面据え置く。
+
+**背景:**
+
+- Issue #12 (本棚ギャラリー UI) の code review で、`script-src` の `'unsafe-inline'` により XSS 防御の CSP 実効性が大幅に下がる点を指摘された
+- 同 PR では `wss` / `object-src` / `worker-src` 等の他 CSP 強化を先行投入し、nonce 方式への移行は Issue #28 として分離した
+- Next.js 15+ 公式ドキュメント (App Router CSP guide) が推奨する middleware ベースの nonce 注入パターンに準拠
+
+**採用した設計:**
+
+- **middleware オーケストレータ (`apps/web/middleware.ts`)**: per-request で nonce 生成 → `updateSession` 呼び出し (CSP 注入と認証 Cookie 同期の責務分離) → 出口で `response.headers.set('Content-Security-Policy', csp)` を 1 回だけ実行。redirect (3xx) や JSON 401 のようなブラウザが CSP を評価しないレスポンスにも一律で付与されるが、これは経路漏れ防止の保険であり害は無い (HTML レスポンスのみがブラウザで CSP 評価される)
+- **CSP ビルダー (`apps/web/lib/csp/build-csp.ts`)**: 純粋関数として CSP 文字列を組み立て、許可ホスト一覧を `@bookhub/shared` から単一ソースで取得
+- **nonce 生成 (`apps/web/lib/csp/generate-nonce.ts`)**: `crypto.getRandomValues(Uint8Array(16))` + `btoa` で 128bit base64 nonce を生成。`Buffer` 非依存のため Edge Runtime / Cloudflare Workers Runtime で動作
+- **layout (`apps/web/app/layout.tsx`)**: `await headers()` で `x-nonce` を取得し、next-themes の inline 初期化スクリプト用に `nonce` prop で渡す。Next.js が出力する RSC ハイドレーションスクリプトには `x-nonce` request header から自動付与されるため追加対応不要
+
+**実機検証 (`pnpm build && pnpm start`):**
+
+- `script-src` から `'unsafe-inline'` が外れ、`'self' 'nonce-{nonce}' 'strict-dynamic'` に置換されることを確認
+- 連続リクエストで nonce が変化することを確認
+- Next.js 出力の `<script src="...">` および inline `<script>` (next-themes 初期化、`__next_f` ストリーミング含む) すべてに同一 nonce が自動付与されることを確認
+
+**style-src の判断:**
+
+- 現在の rendered HTML には inline `<style>` も `style=""` 属性も含まれないが、将来 Radix Popper / shadcn-ui Dialog 等が動的 inline style を出す可能性があるため、`'unsafe-inline'` を据え置き
+- 主たる脅威 (script injection) は nonce + strict-dynamic で完全防御済み。style injection 経由の攻撃 (例: `background-image` で password field 値を抽出) は input サニタイズ等の他層で軽減
+- 将来 inline style 利用が無いと確証できた時点で `style-src 'self' 'nonce-{nonce}'` への厳格化を別 Issue として検討
+
+**副作用 (architect レビューで予測済み):**
+
+- `await headers()` を RootLayout に追加したことで、サイト全体が **Dynamic Rendering 強制**化される (LP / login / signup を含む)
+- per-request nonce は HTML キャッシュと原理的に両立しないため、Cloudflare CDN の HTML キャッシュは元から使えず、これは許容範囲
+- `_next/static/*` のアセットキャッシュには影響なし
+
+**却下した代替案:**
+
+- **`next.config.ts` に nonce 抜きの fallback CSP を残置 (defense-in-depth)**: nonce 抜きの CSP は `strict-dynamic` を含めると Next.js が動かないため、結局 `'unsafe-inline'` 含みになり実質効果なし。「動いているように見えて緩い」状態を発見しにくくする逆効果のため不採用
+- **`crypto.randomUUID()` で nonce を作る**: UUID 文字列はハイフンを含み、CSP nonce 仕様 (`base64-value` 規定) と曖昧で一部ブラウザ・パーサーで弾かれる懸念。`crypto.getRandomValues` + base64 を採用
+- **hash ベース CSP (`'sha256-...'`)**: Next.js のチャンク内容はビルド毎に変動し、next-themes の inline script もテーマ設定で変動するため運用負荷が高い
+
+**運用注意点:**
+
+- **新規 inline `<script>` を追加する場合**: `headers()` から nonce を取得して `<Script nonce={nonce}>` (next/script) または DOM 直書きの `<script nonce={nonce}>` で渡す。`<script src="...">` 直書きは `strict-dynamic` 配下では nonce 無しで動かない
+- **サードパーティ script (Sentry / GA / 楽天 widget 等)**: 必ず `next/script` 経由で読み込む。`strict-dynamic` は nonce 付き script が動的挿入した script を暗黙的に許可するため、bootstrap script に nonce が付けば子 script は自動的に動作
+- **CSP 違反デバッグ**: 本番デプロイ後の違反検知のため、将来的に `report-to` / `report-uri` での違反レポート収集を別 Issue で検討
+- **middleware 経路の保守**: `lib/supabase/middleware.ts` で新たな `NextResponse.next/redirect/json` 経路を追加する場合、CSP は middleware 出口で一元的に set されるため経路追加側で意識する必要は無い。ただし `updateSession` 内で response を完結する経路を増やす場合は引き続き orchestrator 出口で set される構造を壊さないこと
+
+**関連ファイル:**
+
+- `apps/web/middleware.ts` — CSP nonce オーケストレータ
+- `apps/web/lib/csp/build-csp.ts` — CSP ビルダー (純粋関数)
+- `apps/web/lib/csp/generate-nonce.ts` — Edge Runtime 互換 nonce 生成
+- `apps/web/lib/supabase/middleware.ts` — `updateSession(request, { nonce })` で `x-nonce` を request header に伝搬
+- `apps/web/app/layout.tsx` — `await headers()` で nonce を取得し ThemeProvider へ配布
+- `apps/web/next.config.ts` — CSP 静的定義は撤去 (middleware に一元化)、X-Frame-Options 等の他セキュリティヘッダは残置
+
 ---
 
 ## 7. Cloudflare Pages Edge Runtime の制約
