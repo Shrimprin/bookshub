@@ -328,6 +328,19 @@ describe('updateSession', () => {
       expect((headers as Headers).get('x-nonce')).toBe('phase2-test-nonce')
     })
 
+    it('options.csp 指定時は NextResponse.next に Content-Security-Policy 付き request.headers を渡す', async () => {
+      const { NextResponse } = await import('next/server')
+      const request = createMockRequest('/')
+
+      await updateSession(request, { nonce: 'n', csp: "script-src 'self' 'nonce-n'" })
+
+      const calls = vi.mocked(NextResponse.next).mock.calls
+      const lastArg = calls[calls.length - 1][0] as { request: { headers: Headers } } | undefined
+      const headers = lastArg?.request.headers as Headers
+      expect(headers.get('Content-Security-Policy')).toBe("script-src 'self' 'nonce-n'")
+      expect(headers.get('x-nonce')).toBe('n')
+    })
+
     it('options 未指定時は従来どおり request をそのまま渡す (後方互換)', async () => {
       const { NextResponse } = await import('next/server')
       const request = createMockRequest('/')

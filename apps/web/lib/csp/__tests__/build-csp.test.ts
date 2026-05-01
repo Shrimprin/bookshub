@@ -37,14 +37,16 @@ describe('buildContentSecurityPolicy', () => {
     expect(scriptSrc).not.toContain("'unsafe-inline'")
   })
 
-  it('img-src に @bookhub/shared の許可ホスト一覧が反映される', () => {
+  it('img-src に @bookhub/shared の許可ホストが exact + サブドメインで反映される', () => {
     const csp = buildContentSecurityPolicy({ nonce: NONCE, isDev: false })
     const imgSrc = getDirective(csp, 'img-src') ?? ''
 
     expect(imgSrc).toContain("'self'")
     expect(imgSrc).toContain('data:')
     for (const host of ALLOWED_THUMBNAIL_HOSTS) {
+      // thumbnailUrlSchema は exact + サブドメインを許可するため CSP も両方を出す
       expect(imgSrc).toContain(`https://${host}`)
+      expect(imgSrc).toContain(`https://*.${host}`)
     }
   })
 

@@ -1,6 +1,13 @@
 import { ALLOWED_THUMBNAIL_HOSTS } from '@bookhub/shared'
 
-const IMG_HOSTS_CSP = ALLOWED_THUMBNAIL_HOSTS.map((host) => `https://${host}`).join(' ')
+// thumbnailUrl のサーバー側スキーマ (packages/shared/src/schemas/book-schema.ts) は
+// `hostname === h || hostname.endsWith(`.${h}`)` で exact + 全サブドメインを許可する。
+// CSP img-src も同じスコープに合わせ、`https://${host}` と `https://*.${host}` の両方を出す。
+// 片方だけだとサブドメイン thumbnail がスキーマでは通るのに CSP で弾かれる不一致が起きる。
+const IMG_HOSTS_CSP = ALLOWED_THUMBNAIL_HOSTS.flatMap((host) => [
+  `https://${host}`,
+  `https://*.${host}`,
+]).join(' ')
 
 export type BuildCspOptions = {
   nonce: string

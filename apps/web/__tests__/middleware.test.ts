@@ -30,15 +30,25 @@ describe('middleware (CSP nonce オーケストレータ)', () => {
     updateSessionMock.mockReset()
   })
 
-  it('updateSession に nonce option を渡す', async () => {
+  it('updateSession に nonce と csp option を渡す', async () => {
     updateSessionMock.mockResolvedValue(makeFakeResponse())
 
     await middleware(createTestRequest('/'))
 
     expect(updateSessionMock).toHaveBeenCalledOnce()
     const [, options] = updateSessionMock.mock.calls[0]
-    expect(options).toEqual(expect.objectContaining({ nonce: expect.any(String) }))
-    expect((options as { nonce: string }).nonce.length).toBeGreaterThan(0)
+    expect(options).toEqual(
+      expect.objectContaining({
+        nonce: expect.any(String),
+        csp: expect.any(String),
+      }),
+    )
+    const typed = options as { nonce: string; csp: string }
+    expect(typed.nonce.length).toBeGreaterThan(0)
+    // csp は同じ nonce を含む完全な CSP 文字列であること (Next.js の getScriptNonceFromHeader が
+    // request.headers から抽出するために必要)
+    expect(typed.csp).toContain(`'nonce-${typed.nonce}'`)
+    expect(typed.csp).toContain('script-src')
   })
 
   it('レスポンスに Content-Security-Policy header を set する', async () => {
