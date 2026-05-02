@@ -41,7 +41,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       - name: Deploy
-        run: pnpm --filter web deploy
+        # `pnpm --filter web deploy` は pnpm 10 の組み込み `pnpm deploy` (monorepo deploy)
+        # と衝突して `ERR_PNPM_INVALID_DEPLOY_TARGET` で失敗する。`run` を明示挟むと
+        # package.json の scripts.deploy が確実に解決される。
+        run: pnpm --filter web run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
