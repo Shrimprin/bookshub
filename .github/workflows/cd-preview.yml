@@ -1,0 +1,60 @@
+name: CD Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: cd-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10"
+
+jobs:
+  preview:
+    name: Deploy Preview
+    # forked PR からの secret 漏洩を防ぐため、同一リポジトリのブランチからの PR に限定する
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+    permissions:
+      contents: read
+      # marocchino/sticky-pull-request-comment で PR にコメントを投稿するため必須。
+      # コメントを廃止する場合は read まで下げる。
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @bookhub/shared build
+      - name: Build for Cloudflare Workers
+        run: pnpm --filter web pages:build
+        env:
+          # preview environment の secrets には preview 用 Supabase プロジェクトの値を登録する。
+          # 本番 DB の汚染を防ぐため必ず production とは別プロジェクトを使う。
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      - name: Deploy preview
+        id: deploy
+        run: |
+          pnpm --filter web exec -- opennextjs-cloudflare deploy \
+            --name "bookhub-web-pr-${{ github.event.pull_request.number }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Comment preview URL on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: preview
+          message: |
+            Preview deployed: https://bookhub-web-pr-${{ github.event.pull_request.number }}.<account>.workers.dev
