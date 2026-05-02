@@ -75,4 +75,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - run: pnpm --filter @bookhub/shared build
+      # `--mode development` ビルドのため BOOKHUB_API_URL 等は未注入で OK。本番拡張機能ビルドは
+      # 別途リリースフロー (`pnpm --filter extension build:prod`) で実施するため CI 対象外。
+      - run: pnpm --filter extension build
+      - name: Build web for Cloudflare Workers
+        run: pnpm --filter web pages:build
+        env:
+          # NEXT_PUBLIC_* は build 時に inline されるためダミー値を注入する。
+          # CI では実 deploy しないため値の正確性は不要。
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder

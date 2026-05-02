@@ -4,8 +4,6 @@ import { createClientFromToken } from '@/lib/supabase/auth-helper'
 import { getUserBooks } from '@/lib/books/get-user-books'
 import { registerBook } from '@/lib/books/register-book'
 
-export const runtime = 'edge'
-
 async function authenticate(request: Request) {
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
@@ -36,7 +34,9 @@ export async function GET(request: Request) {
 
     const parsed = getBooksQuerySchema.safeParse(rawQuery)
     if (!parsed.success) {
-      console.error('[GET /api/books] Validation failed:', parsed.error.issues)
+      // Zod issues の `received` 値はユーザー入力 (PII 含む可能性) のため log には path のみ残す
+      const paths = parsed.error.issues.map((i) => i.path.join('.'))
+      console.error('[GET /api/books] Validation failed at paths:', paths)
       return NextResponse.json(
         { error: 'validation_error', message: 'Invalid query parameters' },
         { status: 400 },
@@ -83,7 +83,8 @@ export async function POST(request: Request) {
     // 3. Zod バリデーション
     const parsed = registerBookSchema.safeParse(body)
     if (!parsed.success) {
-      console.error('[POST /api/books] Validation failed:', parsed.error.issues)
+      const paths = parsed.error.issues.map((i) => i.path.join('.'))
+      console.error('[POST /api/books] Validation failed at paths:', paths)
       return NextResponse.json(
         { error: 'validation_error', message: 'Request body validation failed' },
         { status: 400 },

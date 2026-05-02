@@ -1,0 +1,22 @@
+// Cloudflare Workers 設定 (apps/web 用)。
+// OpenNext テンプレート (node_modules/@opennextjs/cloudflare/templates/wrangler.jsonc) からの差分:
+//   - services (WORKER_SELF_REFERENCE): 省略。Next.js の revalidate / unstable_cache を使う場合は要復活
+//   - r2_buckets (NEXT_INC_CACHE_R2_BUCKET): 省略。ISR キャッシュを R2 に永続化する場合は要復活
+//   - images (IMAGES binding): 省略。Cloudflare Images を有効化する場合は要復活
+// MVP 段階では Supabase で完結するため上記バインディングは不要。導入時は OpenNext のドキュメント
+// (https://opennext.js.org/cloudflare/caching) と当時のテンプレートに沿って追加すること。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bookhub-web",
+  "main": ".open-next/worker.js",
+  // compatibility_date を更新する場合は wrangler dev でローカル検証してからコミットすること
+  "compatibility_date": "2026-05-02",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

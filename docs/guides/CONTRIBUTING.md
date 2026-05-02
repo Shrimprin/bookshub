@@ -57,13 +57,13 @@ cp .env.example apps/web/.env.local
 
 ### apps/web
 
-| コマンド                        | 説明                                    |
-| ------------------------------- | --------------------------------------- |
-| `pnpm --filter web dev`         | 開発サーバー                            |
-| `pnpm --filter web build`       | Next.js ビルド                          |
-| `pnpm --filter web pages:build` | Cloudflare Pages 用ビルド               |
-| `pnpm --filter web preview`     | Cloudflare Pages をローカルでプレビュー |
-| `pnpm --filter web deploy`      | Cloudflare Pages へデプロイ             |
+| コマンド                        | 説明                                                        |
+| ------------------------------- | ----------------------------------------------------------- |
+| `pnpm --filter web dev`         | 開発サーバー                                                |
+| `pnpm --filter web build`       | Next.js ビルド                                              |
+| `pnpm --filter web pages:build` | Cloudflare Workers 用ビルド (`opennextjs-cloudflare build`) |
+| `pnpm --filter web preview`     | Cloudflare Workers をローカルでプレビュー (`wrangler dev`)  |
+| `pnpm --filter web deploy`      | Cloudflare Workers へデプロイ (`wrangler deploy`)           |
 
 ### apps/extension
 
@@ -602,6 +602,182 @@ BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
 
 # 3. Chrome で chrome://extensions を開き、dist/ フォルダをロード
 ```
+
+## デプロイ (Cloudflare Workers)
+
+`apps/web` は `@opennextjs/cloudflare` 経由で Cloudflare Workers にデプロイする。`apps/web/wrangler.jsonc` が Worker 設定、`.github/workflows/cd.yml` が CD ワークフロー。
+
+### CD ワークフロー全体像
+
+| トリガー                 | ワークフロー     | 動作                                                        |
+| ------------------------ | ---------------- | ----------------------------------------------------------- |
+| `push` to `main`         | `cd.yml`         | Worker `bookhub-web` に本番デプロイ。承認制 (production)    |
+| `pull_request` to `main` | `cd-preview.yml` | Worker `bookhub-web-pr-<番号>` にプレビューデプロイ         |
+| `workflow_dispatch` (CD) | `cd.yml`         | 本番デプロイの手動再実行 (rollback の補助 / 初回手動実行用) |
+
+### 初回セットアップ (ユーザー手動作業)
+
+#### 1. Cloudflare API Token の発行
+
+1. https://dash.cloudflare.com/profile/api-tokens を開く
+2. **Create Token** → **Custom token** を選択
+3. パーミッション (最小権限):
+   - `Account` → `Workers Scripts` → `Edit`
+   - `Account` → `Account Settings` → `Read`
+   - `User` → `User Details` → `Read`
+4. **Account Resources**: 自分のアカウントのみに限定
+5. 生成された token を控える (ページを離れると再表示不可)
+
+R2 / KV / D1 を導入する別 issue で token を再発行 or 権限追加。
+
+#### 2. Cloudflare Account ID と workers.dev サブドメインの取得
+
+1. https://dash.cloudflare.com/ を開く
+2. 右サイドバーの **Account ID** をコピー
+3. 左サイドバー **Workers & Pages** を開く
+4. **初回のみ**: `workers.dev` サブドメイン登録画面が出る場合、任意のサブドメインを選択して登録 (例: `kuroneko-acc`)
+   - 登録後の Worker URL は `https://<worker-name>.<subdomain>.workers.dev`
+   - **一度登録すると変更できない**ため慎重に決める
+   - 既に他の Worker をこのアカウントで運用済みなら登録済み。既存の Worker URL `https://*.<subdomain>.workers.dev` の `<subdomain>` 部分が値
+5. このサブドメイン名を 5-pre のステップで Repository Variable `CLOUDFLARE_WORKERS_SUBDOMAIN` として登録する
+
+> サブドメイン未登録のまま CD ワークフローを実行すると `You need to register a workers.dev subdomain before publishing to workers.dev` エラーで deploy が失敗する。
+
+#### 3. Supabase プロジェクトの準備 (本番 + preview の 2 つ)
+
+##### 3-a. 本番用 Supabase プロジェクト
+
+1. https://supabase.com/dashboard で本番用プロジェクトを開く
+2. **Project Settings** → **API** で `Project URL` と `anon public` キーを控える
+3. **Authentication** → **URL Configuration**:
+   - **Site URL**: `https://bookhub-web.<account>.workers.dev`
+   - **Redirect URLs** (`/auth/callback` まで含めて完全一致で登録):
+     - `https://bookhub-web.<account>.workers.dev/auth/callback`
+     - `http://localhost:3000/auth/callback` (ローカル開発用)
+
+> `apps/web/components/auth/login-form.tsx` で OAuth の `redirectTo` に `${window.location.origin}/auth/callback` を渡しているため、Supabase の許可リストに `/auth/callback` パスを含めないと OAuth ログインが弾かれる。
+
+##### 3-b. preview 用 Supabase プロジェクト
+
+本番 DB の汚染を防ぐため別プロジェクトを作成する。
+
+1. **New Project** で `bookhub-preview` 等を作成
+2. 本番と同じスキーマを適用 (migration を流す)
+3. **Project Settings** → **API** で URL / anon key を控える
+4. **Authentication** → **URL Configuration**:
+   - **Site URL**: `https://bookhub-web-pr-1.<account>.workers.dev` (暫定。preview は PR ごとに URL が変わるが Site URL は 1 つしか設定できないため目印程度)
+   - **Redirect URLs** (PR ごとに URL が変わるため wildcard を活用):
+     - `https://bookhub-web-pr-*.<account>.workers.dev/auth/callback`
+     - `http://localhost:3000/auth/callback` (ローカル開発用)
+
+#### 4. GitHub Environment `production` の作成
+
+1. **Settings** → **Environments** → **New environment** → 名前 `production`
+2. **Required reviewers**: 自分自身を追加 (誤デプロイ防止)
+3. **Deployment branches and tags**: `main` のみ許可
+
+#### 5-pre. Repository Variable `CLOUDFLARE_WORKERS_SUBDOMAIN` の登録
+
+CD ワークフローは Worker URL を `https://bookhub-web.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev` の形で組み立てる。
+
+1. **Settings** → **Secrets and variables** → **Actions** → **Variables** タブ
+2. **New repository variable** で以下を登録:
+   - Name: `CLOUDFLARE_WORKERS_SUBDOMAIN`
+   - Value: Cloudflare アカウントの Workers サブドメイン (例: アカウントが `kuroneko-acc` なら `kuroneko-acc`)
+   - 確認方法: Cloudflare ダッシュボード → **Workers & Pages** → 任意の Worker をクリック → URL `https://<worker-name>.<subdomain>.workers.dev` の `<subdomain>` 部分
+
+Repository Variable は secret ではないため平文で表示されるが、サブドメイン名自体は公開情報のため問題ない。production / preview の両方のワークフローで参照される。
+
+#### 5. `production` Environment Secrets の登録
+
+| Secret 名                       | 値                      |
+| ------------------------------- | ----------------------- |
+| `CLOUDFLARE_API_TOKEN`          | 1 で発行した token      |
+| `CLOUDFLARE_ACCOUNT_ID`         | 2 で取得した Account ID |
+| `NEXT_PUBLIC_SUPABASE_URL`      | 3-a の Project URL      |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 3-a の anon key         |
+
+> **注意**: `NEXT_PUBLIC_*` 接頭辞の値は client bundle に inline される前提のもののみに使用。サーバ専用シークレット (Supabase `service_role` key 等) は `NEXT_PUBLIC_` を付けず、Cloudflare 側 (`wrangler secret put`) または GitHub Environment Secrets + サーバ側 env から読む運用に分離する。
+>
+> Repository Secrets ではなく Environment Secrets に登録すること。
+
+#### 5-post. サーバ専用シークレットを Cloudflare Worker に登録
+
+`/api/books/search` は `RAKUTEN_APP_ID` (楽天ブックス API) と `GOOGLE_BOOKS_API_KEY` (Google Books API) のいずれか/両方をサーバ側 env から読む。これらは client bundle に inline すべきでないため、Cloudflare Worker secrets として登録する。
+
+8 (初回手動デプロイ) で Worker が作成された **後** に、ローカルから一度だけ実行:
+
+```bash
+cd apps/web
+
+# 楽天ブックス API を使う場合
+echo -n "<RAKUTEN_APP_ID 値>" | pnpm exec wrangler secret put RAKUTEN_APP_ID --name bookhub-web
+
+# Google Books API を使う場合
+echo -n "<GOOGLE_BOOKS_API_KEY 値>" | pnpm exec wrangler secret put GOOGLE_BOOKS_API_KEY --name bookhub-web
+```
+
+両方未設定の場合 `/api/books/search` は `source: "none"` を返す (機能縮退)。Secret rotation は同コマンドで上書き可能。値の確認は `wrangler secret list --name bookhub-web` (値そのものは表示されない)。
+
+将来 secret 自動同期を CD ワークフローに組み込む場合は別 issue で対応する。
+
+#### 6. GitHub Environment `preview` の作成と Secrets 登録
+
+Phase 4 (PR preview) 着手前に必要。
+
+1. **Settings** → **Environments** → **New environment** → 名前 `preview`
+2. **Required reviewers**: 設定なし (PR ごとの承認待ちは過剰)
+3. **Deployment branches and tags**: All branches (forked PR は workflow の `if` で除外する)
+4. Environment Secrets:
+
+| Secret 名                       | 値                                                             |
+| ------------------------------- | -------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`          | **preview 専用 token を別発行することを推奨** (詳細は下記注意) |
+| `CLOUDFLARE_ACCOUNT_ID`         | 2 と同じ                                                       |
+| `NEXT_PUBLIC_SUPABASE_URL`      | **3-b の preview 用 Project URL** (本番とは別!)                |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **3-b の preview 用 anon key** (本番とは別!)                   |
+
+> **preview token 分離の推奨理由**: preview environment には Required Reviewers を設定しない (PR ごとの承認は過剰)。同一リポジトリのブランチから PR が出れば誰でも `pages:build` + `deploy` が走る。production と同じ Cloudflare API Token を共有すると、preview 経由で production worker を上書きできるリスクが残る (token のスコープは Workers Scripts: Edit でアカウント全体)。MVP のソロ開発期間は同一 token でも許容できるが、コラボレーター追加時は preview 専用 token を発行し、production deploy には通常使わない運用にすること。
+
+#### 7. ブランチ保護ルール (main) の設定
+
+1. **Settings** → **Branches** → **Add branch ruleset**
+2. **Branch name pattern**: `main`
+3. ルール:
+   - **Require a pull request before merging**: ON
+   - **Require status checks to pass**: ON
+     - Required: `Lint`, `Format`, `Test`, `Build`
+     - Require branches to be up to date before merging: ON
+   - **Restrict deletions**: ON
+
+CD は post-merge トリガーなので required status check には含めない (含められない)。
+
+#### 8. 初回手動デプロイで動作確認
+
+1. **Actions** タブから `CD` ワークフローを `workflow_dispatch` で手動実行
+2. **Review deployments** で `production` environment を承認
+3. 各ステップが緑になることを確認
+4. Cloudflare ダッシュボードで `bookhub-web` Worker が作成され、URL `https://bookhub-web.<account>.workers.dev` でアクセスできることを確認
+
+### Rollback 手順
+
+main に壊れた変更がマージされて本番が落ちた場合:
+
+| 手段               | 操作                                                                                                                                                           | 所要時間 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| **A (推奨・即効)** | Cloudflare ダッシュボード → `bookhub-web` Worker → **Deployments / Versions** タブから 1 つ前の version を **Rollback** で再 activate                          | < 1 分   |
+| **B (Git で戻す)** | 直前の正常 commit に対して `git revert` PR を作成 → main に merge → CD が再走                                                                                  | 5-10 分  |
+| **C (将来課題)**   | `wrangler versions upload` + `wrangler versions deploy` ベースの段階的 rollout (gradual deployment) は MVP では導入しないが、本番 traffic が増えた時点で再評価 | -        |
+
+`workflow_dispatch` での再実行は HEAD = 壊れた main commit を再 deploy するだけなので **rollback にならない**点に注意。
+
+### Custom Domain (follow-up issue)
+
+本 issue では `*.workers.dev` ドメインで運用。Custom Domain 適用時は以下を別 issue で実施:
+
+- Cloudflare Workers Custom Domains の設定
+- Supabase Auth Site URL / Redirect URLs を Custom Domain に更新
+- CSP の `connect-src` 等を Custom Domain に更新
 
 ## PR チェックリスト
 

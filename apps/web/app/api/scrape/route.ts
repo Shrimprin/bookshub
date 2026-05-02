@@ -3,8 +3,6 @@ import { scrapePayloadSchema } from '@bookhub/shared'
 import { createClientFromToken } from '@/lib/supabase/auth-helper'
 import { processScrapePayload } from '@/lib/scrape/process-scrape'
 
-export const runtime = 'edge'
-
 // Chrome 拡張機能は CORS をバイパスするため、CORS ヘッダーは不要。
 // ブラウザからの直接アクセスを許可しないよう、OPTIONS は最低限のレスポンスのみ返す。
 export async function OPTIONS() {
@@ -55,7 +53,9 @@ export async function POST(request: Request) {
     // 3. Zod バリデーション
     const parsed = scrapePayloadSchema.safeParse(body)
     if (!parsed.success) {
-      console.error('[POST /api/scrape] Validation failed:', parsed.error.issues)
+      // Zod issues の `received` 値はスクレイプデータ (タイトル・著者等の PII) を含むため path のみ log
+      const paths = parsed.error.issues.map((i) => i.path.join('.'))
+      console.error('[POST /api/scrape] Validation failed at paths:', paths)
       return NextResponse.json(
         {
           error: 'validation_error',

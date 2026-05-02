@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClientFromToken } from '@/lib/supabase/auth-helper'
 import { searchBooks } from '@/lib/book-search/book-search-service'
 
-export const runtime = 'edge'
-
 async function authenticate(request: Request) {
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
