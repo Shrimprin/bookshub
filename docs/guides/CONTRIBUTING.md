@@ -643,7 +643,11 @@ R2 / KV / D1 を導入する別 issue で token を再発行 or 権限追加。
 2. **Project Settings** → **API** で `Project URL` と `anon public` キーを控える
 3. **Authentication** → **URL Configuration**:
    - **Site URL**: `https://bookhub-web.<account>.workers.dev`
-   - **Redirect URLs**: 上記 + ローカル開発用 `http://localhost:3000`
+   - **Redirect URLs** (`/auth/callback` まで含めて完全一致で登録):
+     - `https://bookhub-web.<account>.workers.dev/auth/callback`
+     - `http://localhost:3000/auth/callback` (ローカル開発用)
+
+> `apps/web/components/auth/login-form.tsx` で OAuth の `redirectTo` に `${window.location.origin}/auth/callback` を渡しているため、Supabase の許可リストに `/auth/callback` パスを含めないと OAuth ログインが弾かれる。
 
 ##### 3-b. preview 用 Supabase プロジェクト
 
@@ -653,8 +657,10 @@ R2 / KV / D1 を導入する別 issue で token を再発行 or 権限追加。
 2. 本番と同じスキーマを適用 (migration を流す)
 3. **Project Settings** → **API** で URL / anon key を控える
 4. **Authentication** → **URL Configuration**:
-   - **Site URL**: `https://bookhub-web-pr-1.<account>.workers.dev` (暫定)
-   - **Redirect URLs**: `https://bookhub-web-pr-*.<account>.workers.dev/auth/callback` + `http://localhost:3000`
+   - **Site URL**: `https://bookhub-web-pr-1.<account>.workers.dev` (暫定。preview は PR ごとに URL が変わるが Site URL は 1 つしか設定できないため目印程度)
+   - **Redirect URLs** (PR ごとに URL が変わるため wildcard を活用):
+     - `https://bookhub-web-pr-*.<account>.workers.dev/auth/callback`
+     - `http://localhost:3000/auth/callback` (ローカル開発用)
 
 #### 4. GitHub Environment `production` の作成
 
