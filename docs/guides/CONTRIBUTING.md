@@ -630,10 +630,18 @@ BOOKHUB_API_URL=http://localhost:3000 pnpm --filter extension dev
 
 R2 / KV / D1 を導入する別 issue で token を再発行 or 権限追加。
 
-#### 2. Cloudflare Account ID の取得
+#### 2. Cloudflare Account ID と workers.dev サブドメインの取得
 
 1. https://dash.cloudflare.com/ を開く
 2. 右サイドバーの **Account ID** をコピー
+3. 左サイドバー **Workers & Pages** を開く
+4. **初回のみ**: `workers.dev` サブドメイン登録画面が出る場合、任意のサブドメインを選択して登録 (例: `kuroneko-acc`)
+   - 登録後の Worker URL は `https://<worker-name>.<subdomain>.workers.dev`
+   - **一度登録すると変更できない**ため慎重に決める
+   - 既に他の Worker をこのアカウントで運用済みなら登録済み。既存の Worker URL `https://*.<subdomain>.workers.dev` の `<subdomain>` 部分が値
+5. このサブドメイン名を 5-pre のステップで Repository Variable `CLOUDFLARE_WORKERS_SUBDOMAIN` として登録する
+
+> サブドメイン未登録のまま CD ワークフローを実行すると `You need to register a workers.dev subdomain before publishing to workers.dev` エラーで deploy が失敗する。
 
 #### 3. Supabase プロジェクトの準備 (本番 + preview の 2 つ)
 
