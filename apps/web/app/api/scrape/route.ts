@@ -3,8 +3,6 @@ import { scrapePayloadSchema } from '@bookhub/shared'
 import { createClientFromToken } from '@/lib/supabase/auth-helper'
 import { processScrapePayload } from '@/lib/scrape/process-scrape'
 
-export const runtime = 'edge'
-
 // Chrome 拡張機能は CORS をバイパスするため、CORS ヘッダーは不要。
 // ブラウザからの直接アクセスを許可しないよう、OPTIONS は最低限のレスポンスのみ返す。
 export async function OPTIONS() {

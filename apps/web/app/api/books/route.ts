@@ -4,8 +4,6 @@ import { createClientFromToken } from '@/lib/supabase/auth-helper'
 import { getUserBooks } from '@/lib/books/get-user-books'
 import { registerBook } from '@/lib/books/register-book'
 
-export const runtime = 'edge'
-
 async function authenticate(request: Request) {
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
