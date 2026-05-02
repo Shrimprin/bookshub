@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
+      # vars.CLOUDFLARE_WORKERS_SUBDOMAIN は Repository Variables に登録する。
+      # 例: <account-name> で Worker URL は https://bookhub-web.<account-name>.workers.dev
+      url: https://bookhub-web.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev
     permissions:
       contents: read
     steps:

@@ -662,6 +662,18 @@ R2 / KV / D1 を導入する別 issue で token を再発行 or 権限追加。
 2. **Required reviewers**: 自分自身を追加 (誤デプロイ防止)
 3. **Deployment branches and tags**: `main` のみ許可
 
+#### 5-pre. Repository Variable `CLOUDFLARE_WORKERS_SUBDOMAIN` の登録
+
+CD ワークフローは Worker URL を `https://bookhub-web.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev` の形で組み立てる。
+
+1. **Settings** → **Secrets and variables** → **Actions** → **Variables** タブ
+2. **New repository variable** で以下を登録:
+   - Name: `CLOUDFLARE_WORKERS_SUBDOMAIN`
+   - Value: Cloudflare アカウントの Workers サブドメイン (例: アカウントが `kuroneko-acc` なら `kuroneko-acc`)
+   - 確認方法: Cloudflare ダッシュボード → **Workers & Pages** → 任意の Worker をクリック → URL `https://<worker-name>.<subdomain>.workers.dev` の `<subdomain>` 部分
+
+Repository Variable は secret ではないため平文で表示されるが、サブドメイン名自体は公開情報のため問題ない。production / preview の両方のワークフローで参照される。
+
 #### 5. `production` Environment Secrets の登録
 
 | Secret 名                       | 値                      |

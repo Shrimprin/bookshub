@@ -1,5 +1,8 @@
 name: CD Preview
 
+# NOTE: PR クローズ時に preview Worker を `wrangler delete` で削除するクリーンアップは未実装。
+# Cloudflare Free plan の Worker 上限 (100) に到達する前に follow-up issue で実装する。
+
 on:
   pull_request:
     branches: [main]
@@ -21,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: preview
+      url: https://bookhub-web-pr-${{ github.event.pull_request.number }}.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev
     permissions:
       contents: read
       # marocchino/sticky-pull-request-comment で PR にコメントを投稿するため必須。
@@ -46,15 +50,19 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       - name: Deploy preview
         id: deploy
-        run: |
-          pnpm --filter web exec -- opennextjs-cloudflare deploy \
-            --name "bookhub-web-pr-${{ github.event.pull_request.number }}"
+        # PR_NUMBER は GitHub が生成する整数のため shell injection 余地はないが、
+        # 慣用的に環境変数経由で展開して将来の文字列展開時の事故を防ぐ。
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          pnpm --filter web exec -- opennextjs-cloudflare deploy \
+            --name "bookhub-web-pr-${PR_NUMBER}"
       - name: Comment preview URL on PR
+        # TODO: SHA pin への移行は別 issue で対応 (Dependabot github-actions ecosystem 有効化と合わせて)
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: preview
           message: |
-            Preview deployed: https://bookhub-web-pr-${{ github.event.pull_request.number }}.<account>.workers.dev
+            Preview deployed: https://bookhub-web-pr-${{ github.event.pull_request.number }}.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev
