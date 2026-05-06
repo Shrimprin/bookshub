@@ -8,7 +8,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bookhub-web",
-  "main": ".open-next/worker.js",
+  // OpenNext custom worker pattern: worker.ts が `.open-next/worker.js` を import し
+  // scheduled ハンドラを追加する (Issue #15 次巻ステータス cron 用)。
+  // https://opennext.js.org/cloudflare/howtos/custom-worker
+  "main": "worker.ts",
   // compatibility_date を更新する場合は wrangler dev でローカル検証してからコミットすること
   "compatibility_date": "2026-05-02",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -18,5 +21,11 @@
   },
   "observability": {
     "enabled": true
+  },
+  // 5 分おきに次巻ステータスを refresh する (batch=3, sleep=1.1s)。
+  // 無料プラン制限 (10ms CPU / req, 50 subrequest / req, 100k req/日) を考慮し、
+  // batch を控えめに設定。CPU time が厳しくなったら batch を 1 に下げる。
+  "triggers": {
+    "crons": ["*/5 * * * *"]
   }
 }
