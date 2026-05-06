@@ -38,6 +38,10 @@ const mockRow = {
   cover_thumbnail_url: 'https://example.com/op-1.jpg',
   stores: ['kindle'],
   last_added_at: '2026-04-19T08:19:21.483347Z',
+  next_volume_status: null,
+  next_volume_release_date: null,
+  next_volume_expected_number: null,
+  next_volume_checked_at: null,
 }
 
 // --- Tests ---
@@ -57,10 +61,73 @@ describe('getUserSeries', () => {
       coverThumbnailUrl: 'https://example.com/op-1.jpg',
       stores: ['kindle'],
       lastAddedAt: '2026-04-19T08:19:21.483347Z',
+      nextVolume: null,
     })
     expect(result.total).toBe(1)
     expect(result.page).toBe(1)
     expect(result.limit).toBe(20)
+  })
+
+  describe('nextVolume マッピング', () => {
+    it('next_volume_status が null なら nextVolume も null', async () => {
+      const supabase = createMockSupabase({ data: [mockRow], count: 1, error: null })
+
+      const result = await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+      expect(result.series[0]?.nextVolume).toBeNull()
+    })
+
+    it('next_volume_status が設定されていれば NextVolumeInfo を組み立てる', async () => {
+      const row = {
+        ...mockRow,
+        next_volume_status: 'scheduled',
+        next_volume_release_date: '2026-08-04',
+        next_volume_expected_number: 108,
+        next_volume_checked_at: '2026-05-06T10:00:00.000Z',
+      }
+      const supabase = createMockSupabase({ data: [row], count: 1, error: null })
+
+      const result = await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+      expect(result.series[0]?.nextVolume).toEqual({
+        status: 'scheduled',
+        expectedVolumeNumber: 108,
+        releaseDate: '2026-08-04',
+        checkedAt: '2026-05-06T10:00:00.000Z',
+      })
+    })
+
+    it('release_date が null でも status があれば NextVolumeInfo を返す', async () => {
+      const row = {
+        ...mockRow,
+        next_volume_status: 'unknown',
+        next_volume_release_date: null,
+        next_volume_expected_number: null,
+        next_volume_checked_at: '2026-05-06T10:00:00.000Z',
+      }
+      const supabase = createMockSupabase({ data: [row], count: 1, error: null })
+
+      const result = await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+      expect(result.series[0]?.nextVolume).toEqual({
+        status: 'unknown',
+        expectedVolumeNumber: null,
+        releaseDate: null,
+        checkedAt: '2026-05-06T10:00:00.000Z',
+      })
+    })
+
+    it('select 句に next_volume_* 列が含まれる', async () => {
+      const supabase = createMockSupabase({ data: [], count: 0, error: null })
+
+      await getUserSeries(supabase, userId, { page: 1, limit: 20 })
+
+      const selectArg = supabase._builder.select.mock.calls[0]?.[0] as string
+      expect(selectArg).toContain('next_volume_status')
+      expect(selectArg).toContain('next_volume_release_date')
+      expect(selectArg).toContain('next_volume_expected_number')
+      expect(selectArg).toContain('next_volume_checked_at')
+    })
   })
 
   it('user_series_view から user_id eq でフィルタする (defense in depth)', async () => {
