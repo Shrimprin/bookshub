@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { UserSeries } from '@/lib/books/get-user-series'
 import { Card } from '@/components/ui/card'
+import { NextVolumeBadge } from '@/features/next-volume/next-volume-badge'
 import { StoreBadge } from './store-badge'
 
 interface SeriesCardProps {
@@ -33,6 +34,9 @@ export function SeriesCard({ series }: SeriesCardProps) {
             {series.stores.map((store) => (
               <StoreBadge key={store} store={store} />
             ))}
+          </div>
+          <div className="absolute left-2 top-2">
+            <NextVolumeBadge info={series.nextVolume} />
           </div>
           <span
             className="absolute bottom-2 left-2 rounded-full bg-secondary/90 px-2 py-0.5 font-mono text-xs font-semibold text-secondary-foreground shadow-glow-secondary backdrop-blur-sm"

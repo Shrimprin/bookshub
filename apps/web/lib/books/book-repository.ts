@@ -35,12 +35,18 @@ export function normalizeText(text: string): string {
   return text.trim().normalize('NFC')
 }
 
+export interface FindExistingBookResult {
+  book: BookRow | null
+  /** series 行が DB に存在したか。新規 series 作成時の post-insert hook 判定に使う。 */
+  seriesExisted: boolean
+}
+
 export async function findExistingBook(
   supabase: SupabaseClient,
   title: string,
   author: string,
   volumeNumber: number | undefined,
-): Promise<BookRow | null> {
+): Promise<FindExistingBookResult> {
   // series は (title, author) でユニーク。先に series.id を解決してから
   // books.series_id + volume_number で検索する 2-query 構成。
   const { data: seriesRow, error: seriesErr } = await supabase
@@ -51,7 +57,7 @@ export async function findExistingBook(
     .maybeSingle()
 
   if (seriesErr) throw new Error(`series SELECT failed: ${seriesErr.message}`)
-  if (!seriesRow) return null
+  if (!seriesRow) return { book: null, seriesExisted: false }
 
   let query = supabase.from('books').select(BOOK_COLUMNS).eq('series_id', seriesRow.id)
 
@@ -63,7 +69,8 @@ export async function findExistingBook(
 
   const { data, error } = await query
   if (error) throw new Error(`books SELECT failed: ${error.message}`)
-  return data && data.length > 0 ? (data[0] as unknown as BookRow) : null
+  const book = data && data.length > 0 ? (data[0] as unknown as BookRow) : null
+  return { book, seriesExisted: true }
 }
 
 export async function insertBook(

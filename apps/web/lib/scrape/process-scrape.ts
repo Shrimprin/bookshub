@@ -67,8 +67,11 @@ export async function processScrapePayload(
     const title = normalizeText(book.title)
     const author = normalizeText(book.author)
 
-    const existing = await findExistingBook(supabase, title, author, book.volumeNumber)
+    const { book: existing } = await findExistingBook(supabase, title, author, book.volumeNumber)
     // existing があれば store_product_id の更新は行わない (Out of Scope: レガシー行の事後補完)
+    // 注: bulk import 経路では subrequest 数 (Cloudflare Workers 50/req 制限) と
+    // Rakuten レート制限の双方を超えるリスクがあるため、新規 series でも sync lookup
+    // は行わない。次巻ステータスは cron が後追いで埋める (Phase 4 参照)。
     const bookRow = existing ?? (await insertBook(supabase, book))
     resolvedBooks.push({ book, bookId: bookRow.id })
   }

@@ -95,36 +95,36 @@ describe('findExistingBook', () => {
     series: { title: 'ワンピース', author: '尾田栄一郎' },
   }
 
-  it('series が見つかり、books にも一致行があればレコードを返す', async () => {
+  it('series が見つかり、books にも一致行があれば book と seriesExisted: true を返す', async () => {
     const supabase = createMockSupabase({
       series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
       books: { select: { data: [matchedBook], error: null } },
     })
 
     const result = await findExistingBook(supabase, 'ワンピース', '尾田栄一郎', 107)
-    expect(result).toEqual(matchedBook)
+    expect(result).toEqual({ book: matchedBook, seriesExisted: true })
   })
 
-  it('series が存在しない場合は books をクエリせず null を返す', async () => {
+  it('series が存在しない場合は books をクエリせず book: null + seriesExisted: false を返す', async () => {
     const supabase = createMockSupabase({
       series: { maybeSingle: { data: null, error: null } },
     })
 
     const result = await findExistingBook(supabase, '存在しない作品', '架空作者', 1)
-    expect(result).toBeNull()
+    expect(result).toEqual({ book: null, seriesExisted: false })
     // from('books') が呼ばれていないことを確認 (series 確認のみ)
     expect(supabase.from).toHaveBeenCalledWith('series')
     expect(supabase.from).not.toHaveBeenCalledWith('books')
   })
 
-  it('series はあっても books に対応行が無ければ null を返す', async () => {
+  it('series はあっても books に対応行が無ければ book: null + seriesExisted: true を返す', async () => {
     const supabase = createMockSupabase({
       series: { maybeSingle: { data: { id: 'series-1' }, error: null } },
       books: { select: { data: [], error: null } },
     })
 
     const result = await findExistingBook(supabase, 'ワンピース', '尾田栄一郎', 999)
-    expect(result).toBeNull()
+    expect(result).toEqual({ book: null, seriesExisted: true })
   })
 
   it('volumeNumber が undefined の場合は IS NULL でクエリする', async () => {
