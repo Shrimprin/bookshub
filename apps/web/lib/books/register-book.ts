@@ -2,8 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RegisterBook, RegisterBookResponse, Store } from '@bookhub/shared'
 import { extractSeriesTitle, extractVolumeNumber } from '@bookhub/shared'
 import { normalizeText, findExistingBook, insertBook } from '@/lib/books/book-repository'
+import { refreshSeriesNextVolume } from '@/lib/next-volume/refresh-series-next-volume'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 
 type RegisterBookResult = RegisterBookResponse | { error: 'conflict'; message: string }
+
+const SYNC_LOOKUP_TIMEOUT_MS = 2000
 
 export async function registerBook(
   supabase: SupabaseClient,
@@ -18,7 +22,12 @@ export async function registerBook(
   const author = normalizeText(data.author)
 
   // Step 1: books テーブルで既存チェック or 新規 INSERT
-  const existing = await findExistingBook(supabase, title, author, parsedVolume)
+  const { book: existing, seriesExisted } = await findExistingBook(
+    supabase,
+    title,
+    author,
+    parsedVolume,
+  )
   const bookRow =
     existing ?? (await insertBook(supabase, { ...data, title, author, volumeNumber: parsedVolume }))
 
@@ -57,6 +66,23 @@ export async function registerBook(
 
   const userBook = (insertedData as { id: string; store: string; created_at: string }[])?.[0]
   if (!userBook) throw new Error('user_books INSERT returned no data')
+
+  // Step 4: 新規シリーズ + 巻数あり → 次巻 sync lookup を best-effort で実行
+  // ユーザーが UI で待っている文脈なので 2 秒で打ち切る。失敗しても本登録結果は返す。
+  if (!seriesExisted && bookRow.volume_number != null) {
+    try {
+      const serviceRole = createServiceRoleClient()
+      await refreshSeriesNextVolume(serviceRole, {
+        seriesId: bookRow.series_id,
+        seriesTitle: bookRow.series.title,
+        author: bookRow.series.author,
+        currentMaxVolume: bookRow.volume_number,
+        timeoutMs: SYNC_LOOKUP_TIMEOUT_MS,
+      })
+    } catch (err) {
+      console.warn('[register-book] next-volume sync lookup failed:', err)
+    }
+  }
 
   return {
     book: {

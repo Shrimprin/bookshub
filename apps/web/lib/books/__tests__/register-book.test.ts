@@ -8,7 +8,17 @@ vi.mock('@/lib/books/book-repository', () => ({
   insertBook: vi.fn(),
 }))
 
+vi.mock('@/lib/next-volume/refresh-series-next-volume', () => ({
+  refreshSeriesNextVolume: vi.fn(),
+}))
+
+vi.mock('@/lib/supabase/service-role', () => ({
+  createServiceRoleClient: vi.fn(() => ({ __mock: 'service-role-client' })),
+}))
+
 import { findExistingBook, insertBook } from '@/lib/books/book-repository'
+import { refreshSeriesNextVolume } from '@/lib/next-volume/refresh-series-next-volume'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 
 // --- Mock helpers ---
 
@@ -82,8 +92,17 @@ const mockBookRow = {
 
 describe('registerBook', () => {
   beforeEach(() => {
-    vi.mocked(findExistingBook).mockResolvedValue(null)
+    vi.mocked(findExistingBook).mockReset()
+    vi.mocked(insertBook).mockReset()
+    vi.mocked(refreshSeriesNextVolume).mockReset()
+    vi.mocked(createServiceRoleClient).mockReset()
+    // 既定: 既存 book なし、series も新規 (両方を返すよう default 設定)
+    vi.mocked(findExistingBook).mockResolvedValue({ book: null, seriesExisted: false })
     vi.mocked(insertBook).mockResolvedValue(mockBookRow)
+    vi.mocked(refreshSeriesNextVolume).mockResolvedValue(undefined)
+    vi.mocked(createServiceRoleClient).mockReturnValue({
+      __mock: 'service-role-client',
+    } as never)
   })
 
   it('新規書籍を登録し、alreadyOwned: false を返す', async () => {
@@ -123,7 +142,7 @@ describe('registerBook', () => {
   })
 
   it('既存書籍がある場合は findExistingBook の結果を使う', async () => {
-    vi.mocked(findExistingBook).mockResolvedValue(mockBookRow)
+    vi.mocked(findExistingBook).mockResolvedValue({ book: mockBookRow, seriesExisted: true })
 
     const supabase = createMockSupabase({
       user_books_select: { data: [], error: null },
@@ -136,7 +155,7 @@ describe('registerBook', () => {
   })
 
   it('別ストアで所持済みの場合、alreadyOwned: true + existingStores を返す', async () => {
-    vi.mocked(findExistingBook).mockResolvedValue(mockBookRow)
+    vi.mocked(findExistingBook).mockResolvedValue({ book: mockBookRow, seriesExisted: true })
 
     const supabase = createMockSupabase({
       user_books_select: { data: [{ store: 'dmm' }], error: null },
@@ -149,7 +168,7 @@ describe('registerBook', () => {
   })
 
   it('同一ストアで既に所持している場合、conflict エラーを返す', async () => {
-    vi.mocked(findExistingBook).mockResolvedValue(mockBookRow)
+    vi.mocked(findExistingBook).mockResolvedValue({ book: mockBookRow, seriesExisted: true })
 
     const supabase = createMockSupabase({
       user_books_insert: {
@@ -174,5 +193,72 @@ describe('registerBook', () => {
     })
 
     await expect(registerBook(supabase, userId, validInput)).rejects.toThrow()
+  })
+
+  describe('次巻 sync lookup', () => {
+    it('シリーズが新規作成された場合、refreshSeriesNextVolume を呼ぶ', async () => {
+      // findExistingBook が seriesExisted: false を返す = 新規シリーズ
+      vi.mocked(findExistingBook).mockResolvedValue({ book: null, seriesExisted: false })
+
+      const supabase = createMockSupabase({
+        user_books_select: { data: [], error: null },
+      })
+
+      await registerBook(supabase, userId, validInput)
+
+      expect(createServiceRoleClient).toHaveBeenCalledTimes(1)
+      expect(refreshSeriesNextVolume).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          seriesId: 'series-1',
+          seriesTitle: 'ワンピース',
+          author: '尾田栄一郎',
+          currentMaxVolume: 107,
+          timeoutMs: 2000,
+        }),
+      )
+    })
+
+    it('既存シリーズなら refreshSeriesNextVolume を呼ばない', async () => {
+      vi.mocked(findExistingBook).mockResolvedValue({
+        book: mockBookRow,
+        seriesExisted: true,
+      })
+
+      const supabase = createMockSupabase({
+        user_books_select: { data: [], error: null },
+      })
+
+      await registerBook(supabase, userId, validInput)
+
+      expect(refreshSeriesNextVolume).not.toHaveBeenCalled()
+    })
+
+    it('volumeNumber が無い (単巻作品) なら refreshSeriesNextVolume を呼ばない', async () => {
+      vi.mocked(findExistingBook).mockResolvedValue({ book: null, seriesExisted: false })
+      vi.mocked(insertBook).mockResolvedValue({ ...mockBookRow, volume_number: null })
+
+      const supabase = createMockSupabase({
+        user_books_select: { data: [], error: null },
+      })
+
+      await registerBook(supabase, userId, { ...validInput, volumeNumber: undefined })
+
+      expect(refreshSeriesNextVolume).not.toHaveBeenCalled()
+    })
+
+    it('refreshSeriesNextVolume が throw しても registerBook 全体は成功する', async () => {
+      vi.mocked(findExistingBook).mockResolvedValue({ book: null, seriesExisted: false })
+      vi.mocked(refreshSeriesNextVolume).mockRejectedValue(new Error('Rakuten down'))
+
+      const supabase = createMockSupabase({
+        user_books_select: { data: [], error: null },
+      })
+
+      const result = await registerBook(supabase, userId, validInput)
+
+      // sync lookup は best-effort: 失敗しても本体の登録結果はそのまま返す
+      expect('book' in result).toBe(true)
+    })
   })
 })

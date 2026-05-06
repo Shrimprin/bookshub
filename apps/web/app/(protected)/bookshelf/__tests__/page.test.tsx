@@ -32,6 +32,7 @@ function makeSeries(overrides: Partial<UserSeries> = {}): UserSeries {
     coverThumbnailUrl: null,
     stores: ['kindle'],
     lastAddedAt: '2024-01-01T00:00:00.000Z',
+    nextVolume: null,
     ...overrides,
   }
 }
